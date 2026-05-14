@@ -1,0 +1,5 @@
+[project]
+name = "orca-trading-yuki-backend"
+version = "0.1.0"
+description = "Placeholder Python backend for Orca Trading Yuki."
+requires-python = ">=3.11"
