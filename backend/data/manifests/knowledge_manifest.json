@@ -1,0 +1,15 @@
+{
+  "version": "0.1.0",
+  "description": "Placeholder manifest for the project knowledge base.",
+  "datasets": {
+    "foundation": {
+      "raw": [],
+      "processed": []
+    },
+    "dynamic": {
+      "raw": [],
+      "processed": []
+    }
+  },
+  "indexes": []
+}

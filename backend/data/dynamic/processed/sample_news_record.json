@@ -1,0 +1,20 @@
+{
+  "text": "A major semiconductor supplier issued upbeat guidance after reporting stronger-than-expected AI infrastructure demand, which may support near-term bullish sentiment across related chip names.",
+  "metadata": {
+    "source": "news_site",
+    "title": "Sample News Record",
+    "created_at": "2026-05-15T09:30:00+08:00",
+    "updated_at": "2026-05-15T09:30:00+08:00",
+    "category": "news",
+    "tags": [
+      "semiconductors",
+      "ai-infrastructure",
+      "guidance"
+    ],
+    "symbol": "NVDA",
+    "topic": "earnings-sentiment",
+    "reliability": "medium",
+    "time_sensitivity": "high",
+    "dataset": "dynamic"
+  }
+}

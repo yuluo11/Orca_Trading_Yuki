@@ -1,0 +1,19 @@
+{
+  "text": "Trend-following setups should prioritize risk control first. Position sizing must be reduced during high-volatility periods, and entries should only be considered when price action aligns with the broader market regime.",
+  "metadata": {
+    "source": "manual_note",
+    "title": "Sample Strategy Record",
+    "created_at": "2026-05-15T00:00:00+08:00",
+    "updated_at": "2026-05-15T00:00:00+08:00",
+    "category": "strategy",
+    "tags": [
+      "risk-control",
+      "trend-following",
+      "position-sizing"
+    ],
+    "topic": "trading-framework",
+    "reliability": "high",
+    "time_sensitivity": "low",
+    "dataset": "foundation"
+  }
+}
