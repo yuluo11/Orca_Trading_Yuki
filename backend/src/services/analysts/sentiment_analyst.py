@@ -2,7 +2,10 @@
 
 from typing import Any
 
+from ...knowledge.repository import KnowledgeRepository
+from .base_agent import BaseLangGraphAnalystAgent, LLMRunnable, PromptProvider
 from .graph_analyst import KnowledgeBackedAnalystService
+from .tooling import AnalystToolRegistry
 
 
 class SentimentAnalystService(KnowledgeBackedAnalystService):
@@ -17,3 +20,25 @@ class SentimentAnalystService(KnowledgeBackedAnalystService):
 
     def default_metadata_filter(self) -> dict[str, Any]:
         return {"time_sensitivity": "high"}
+
+
+class SentimentAnalystAgent(BaseLangGraphAnalystAgent):
+    """Agent wrapper around the sentiment analyst knowledge service."""
+
+    def __init__(
+        self,
+        *,
+        repository: KnowledgeRepository | None = None,
+        service: SentimentAnalystService | None = None,
+        tool_registry: AnalystToolRegistry | None = None,
+        prompt_provider: PromptProvider | None = None,
+        llm: LLMRunnable | None = None,
+    ) -> None:
+        sentiment_service = service or SentimentAnalystService(repository=repository)
+        super().__init__(
+            analyst_name=sentiment_service.analyst_name,
+            knowledge_service=sentiment_service,
+            tool_registry=tool_registry,
+            prompt_provider=prompt_provider,
+            llm=llm,
+        )
