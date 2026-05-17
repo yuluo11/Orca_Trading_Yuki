@@ -22,9 +22,11 @@ from .services.analysts.sentiment_analyst import (
     SentimentAnalystService,
 )
 from .services.analysts.social_analyst import SocialAnalystAgent, SocialAnalystService
+from .services.decision import DecisionAdvisoryAgent, DecisionKnowledgeService, DecisionTask
 from .tools.analyst.tooling import AnalystToolRegistry, KnowledgeBaseSearchTool
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "services" / "analysts" / "prompts"
+DECISION_PROMPTS_DIR = Path(__file__).resolve().parent / "services" / "decision" / "prompts"
 DEFAULT_ANALYST_SEQUENCE = (
     "market_analyst",
     "news_analyst",
@@ -46,6 +48,7 @@ class AppRuntimeState(TypedDict, total=False):
     max_documents: int | None
     messages: list[Any]
     analyst_outputs: dict[str, dict[str, Any]]
+    decision_output: dict[str, Any]
 
 
 def build_prompt_provider(
@@ -62,6 +65,13 @@ def build_tool_registry(
     registry = AnalystToolRegistry()
     registry.register(KnowledgeBaseSearchTool(service))
     return registry
+
+
+def build_decision_prompt_provider(
+    prompts_dir: str | Path | None = None,
+) -> FilePromptProvider:
+    """Build the prompt provider for the decision advisory layer."""
+    return FilePromptProvider(prompts_dir or DECISION_PROMPTS_DIR)
 
 
 def build_graph_analyst_agent(
@@ -216,6 +226,22 @@ def build_analyst_orchestrator(
         sequence=DEFAULT_ANALYST_SEQUENCE,
         llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
         prompts_dir=PROMPTS_DIR,
+    )
+
+
+def build_decision_advisory_agent(
+    *,
+    repository: KnowledgeRepository | None = None,
+    prompt_provider: FilePromptProvider | None = None,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> DecisionAdvisoryAgent:
+    """Assemble the decision advisory agent and its dedicated prompt assets."""
+    service = DecisionKnowledgeService(repository=repository)
+    return DecisionAdvisoryAgent(
+        service=service,
+        prompt_provider=prompt_provider or build_decision_prompt_provider(),
+        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -395,6 +421,70 @@ def run_analyst_realization(
         llm_client=llm_client,
         llm=llm,
     )
+
+
+def run_decision_advisory(
+    *,
+    analyst_payload: dict[str, Any],
+    datasets: tuple[DatasetName, ...] | None = None,
+    metadata_filter: dict[str, Any] | None = None,
+    max_documents: int | None = None,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> dict[str, Any]:
+    """Run the decision advisory agent over an analyst orchestration payload."""
+    task = DecisionTask.from_analyst_payload(
+        analyst_payload,
+        datasets=datasets,
+        metadata_filter=metadata_filter,
+        max_documents=max_documents,
+    )
+    agent = build_decision_advisory_agent(llm_client=llm_client, llm=llm)
+    return agent.invoke(task)
+
+
+def run_decision_realization(
+    *,
+    subject: str,
+    symbol: str | None = None,
+    trade_date: str | None = None,
+    extra_context: str | None = None,
+    analyst_datasets: tuple[DatasetName, ...] | None = None,
+    analyst_metadata_filter: dict[str, Any] | None = None,
+    analyst_max_documents: int | None = None,
+    decision_datasets: tuple[DatasetName, ...] | None = None,
+    decision_metadata_filter: dict[str, Any] | None = None,
+    decision_max_documents: int | None = None,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> dict[str, Any]:
+    """Run the analyst layer first, then synthesize an advisory decision payload."""
+    analyst_payload = run_analyst_orchestrator(
+        subject=subject,
+        symbol=symbol,
+        trade_date=trade_date,
+        extra_context=extra_context,
+        datasets=analyst_datasets,
+        metadata_filter=analyst_metadata_filter,
+        max_documents=analyst_max_documents,
+        llm_client=llm_client,
+        llm=llm,
+    )
+    decision_payload = run_decision_advisory(
+        analyst_payload=analyst_payload,
+        datasets=decision_datasets,
+        metadata_filter=decision_metadata_filter,
+        max_documents=decision_max_documents,
+        llm_client=llm_client,
+        llm=llm,
+    )
+    return {
+        "subject": subject,
+        "symbol": symbol,
+        "trade_date": trade_date,
+        "analyst": analyst_payload,
+        "decision": decision_payload,
+    }
 
 
 def build_langgraph_workflow(
