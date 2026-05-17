@@ -1,0 +1,27 @@
+{
+  "text": "A prior internal decision on a semiconductor momentum setup concluded that strong news and sentiment support did not justify immediate chasing after an extended move. The advisory stance favored continued observation until price action or positioning risk improved, because crowded participation and event fade risk outweighed the short-term upside.",
+  "metadata": {
+    "source": "internal_decision_log",
+    "source_type": "internal",
+    "title": "Sample Decision Memory Case",
+    "created_at": "2026-05-16T10:00:00+08:00",
+    "updated_at": "2026-05-16T10:00:00+08:00",
+    "category": "decision_memory",
+    "memory_type": "decision_case",
+    "tags": [
+      "semiconductors",
+      "momentum",
+      "crowded-trade",
+      "event-fade"
+    ],
+    "symbol": "NVDA",
+    "subject": "Semiconductor momentum extension",
+    "topic": "decision-memory",
+    "recommendation": "keep_watch",
+    "confidence": "medium",
+    "market_regime": "event_driven",
+    "analyst_alignment": "mixed",
+    "outcome_label": "worked",
+    "dataset": "dynamic"
+  }
+}
