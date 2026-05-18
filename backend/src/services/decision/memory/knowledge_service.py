@@ -9,7 +9,7 @@ from ....knowledge.repository import DatasetName, KnowledgeRepository
 from ....knowledge.retriever import KnowledgeRetriever, VectorRetrieverBackend
 
 if TYPE_CHECKING:
-    from ..models.task import DecisionTask
+    from ....agents.decision.base_agent import DecisionTask
 
 
 class DecisionKnowledgeService:
