@@ -10,10 +10,11 @@ from .llm.client import LLMClient, LLMRunnable, ensure_llm_client
 from .agents.analysts.base_agent import (
     AnalystRuntimeState,
     AnalystTask,
+    FilePromptProvider as AnalystFilePromptProvider,
     BaseLangGraphAnalystAgent,
-    FilePromptProvider,
 )
 from .agents.decision import DecisionAdvisoryAgent, DecisionTask
+from .agents.decision.base_agent import FilePromptProvider as DecisionFilePromptProvider
 from .agents.analysts.graph_agent import GraphAnalystAgent
 from .agents.analysts.market_agent import MarketAnalystAgent
 from .agents.analysts.news_agent import NewsAnalystAgent
@@ -28,8 +29,10 @@ from .services.analysts.social_service import SocialAnalystService
 from .services.decision import DecisionKnowledgeService
 from .tools.analyst.tooling import AnalystToolRegistry, KnowledgeBaseSearchTool
 
-PROMPTS_DIR = Path(__file__).resolve().parent / "agents" / "analysts" / "prompts"
-DECISION_PROMPTS_DIR = Path(__file__).resolve().parent / "agents" / "decision" / "prompts"
+SRC_DIR = Path(__file__).resolve().parent
+PROMPTS_ROOT_DIR = SRC_DIR / "prompts"
+ANALYST_PROMPTS_DIR = PROMPTS_ROOT_DIR / "analysts"
+DECISION_PROMPTS_DIR = PROMPTS_ROOT_DIR / "decision"
 DEFAULT_ANALYST_SEQUENCE = (
     "market_analyst",
     "news_analyst",
@@ -56,9 +59,9 @@ class AppRuntimeState(TypedDict, total=False):
 
 def build_prompt_provider(
     prompts_dir: str | Path | None = None,
-) -> FilePromptProvider:
+) -> AnalystFilePromptProvider:
     """Build the prompt provider backed by prompt files on disk."""
-    return FilePromptProvider(prompts_dir or PROMPTS_DIR)
+    return AnalystFilePromptProvider(prompts_dir or ANALYST_PROMPTS_DIR)
 
 
 def build_tool_registry(
@@ -72,15 +75,15 @@ def build_tool_registry(
 
 def build_decision_prompt_provider(
     prompts_dir: str | Path | None = None,
-) -> FilePromptProvider:
+) -> DecisionFilePromptProvider:
     """Build the prompt provider for the decision advisory layer."""
-    return FilePromptProvider(prompts_dir or DECISION_PROMPTS_DIR)
+    return DecisionFilePromptProvider(prompts_dir or DECISION_PROMPTS_DIR)
 
 
 def build_graph_analyst_agent(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> GraphAnalystAgent:
@@ -98,7 +101,7 @@ def build_graph_analyst_agent(
 def build_market_analyst_agent(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> MarketAnalystAgent:
@@ -116,7 +119,7 @@ def build_market_analyst_agent(
 def build_news_analyst_agent(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> NewsAnalystAgent:
@@ -134,7 +137,7 @@ def build_news_analyst_agent(
 def build_sentiment_analyst_agent(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> SentimentAnalystAgent:
@@ -152,7 +155,7 @@ def build_sentiment_analyst_agent(
 def build_social_analyst_agent(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> SocialAnalystAgent:
@@ -170,7 +173,7 @@ def build_social_analyst_agent(
 def build_default_analyst_agents(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> dict[str, BaseLangGraphAnalystAgent]:
@@ -213,7 +216,7 @@ def build_default_analyst_agents(
 def build_analyst_orchestrator(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> AnalystOrchestrator:
@@ -227,14 +230,14 @@ def build_analyst_orchestrator(
         ),
         sequence=DEFAULT_ANALYST_SEQUENCE,
         llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
-        prompts_dir=PROMPTS_DIR,
+        prompts_dir=ANALYST_PROMPTS_DIR,
     )
 
 
 def build_decision_advisory_agent(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: DecisionFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> DecisionAdvisoryAgent:
@@ -492,7 +495,7 @@ def run_decision_realization(
 def build_langgraph_workflow(
     *,
     repository: KnowledgeRepository | None = None,
-    prompt_provider: FilePromptProvider | None = None,
+    prompt_provider: AnalystFilePromptProvider | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> Any:
