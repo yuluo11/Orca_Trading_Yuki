@@ -1,0 +1,8 @@
+Review the original decision context, the resulting outcome, and any relevant historical cases.
+
+Output expectations:
+- summarize what the system got right
+- summarize what the system got wrong or underweighted
+- extract reusable lessons
+- propose bounded adjustments for future analyst or decision behavior
+- avoid overstating certainty from a single case
