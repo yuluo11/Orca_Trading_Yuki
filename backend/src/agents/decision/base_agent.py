@@ -360,11 +360,12 @@ class BaseDecisionAgent:
         timing_decision = self._fallback_timing_decision(task, recommendation)
         action_conditions = self._fallback_action_conditions(task, recommendation)
         no_action_reasons = self._fallback_no_action_reasons(task, recommendation)
-
-        decision_summary = (
-            f"Current analyst evidence for {task.subject} supports a {recommendation} stance."
-        )
         portfolio_context_summary = self.summarize_portfolio_context(task.portfolio_context)
+        decision_summary = self._build_decision_summary(
+            task,
+            recommendation=recommendation,
+            reference_cases=reference_cases,
+        )
         rationale_parts = [
             f"The decision layer reviewed {len(task.analyst_results)} analyst perspective(s).",
             f"Overall analyst confidence is {self._normalize_confidence(task.overall_confidence)}.",
@@ -377,6 +378,20 @@ class BaseDecisionAgent:
             rationale_parts.append(
                 f"Referenced {len(reference_cases)} decision-memory case(s) as supporting context."
             )
+            rationale_parts.append(self._build_reference_case_rationale(reference_cases))
+        confidence = self._derive_decision_confidence(
+            task,
+            recommendation=recommendation,
+            reference_cases=reference_cases,
+        )
+        rationale_parts.append(
+            self._build_confidence_rationale(
+                task,
+                confidence=confidence,
+                recommendation=recommendation,
+                reference_cases=reference_cases,
+            )
+        )
         rationale = " ".join(rationale_parts)
 
         case_fit_assessment = self._fallback_case_fit_assessment(reference_cases)
@@ -395,7 +410,7 @@ class BaseDecisionAgent:
             "no_action_reasons": no_action_reasons,
             "aggregated_risks": aggregated_risks,
             "rationale": rationale,
-            "confidence": self._normalize_confidence(task.overall_confidence),
+            "confidence": confidence,
             "reference_cases": reference_cases,
             "case_fit_assessment": case_fit_assessment,
             "prompt": prompt,
@@ -416,6 +431,12 @@ class BaseDecisionAgent:
         recommendation = recommendation.strip().lower()
         if recommendation not in ALLOWED_RECOMMENDATIONS:
             recommendation = fallback_result["recommendation"]
+        confidence = self._coerce_decision_confidence(
+            llm_result.get("confidence", fallback_result["confidence"]),
+            task=task,
+            recommendation=recommendation,
+            reference_cases=fallback_result["reference_cases"],
+        )
 
         return {
             "subject": task.subject,
@@ -456,9 +477,7 @@ class BaseDecisionAgent:
             ),
             "rationale": str(llm_result.get("rationale", fallback_result["rationale"])).strip()
             or fallback_result["rationale"],
-            "confidence": self._normalize_confidence(
-                llm_result.get("confidence", fallback_result["confidence"])
-            ),
+            "confidence": confidence,
             "reference_cases": self._normalize_reference_cases(
                 llm_result.get("reference_cases"),
                 fallback=fallback_result["reference_cases"],
@@ -491,6 +510,7 @@ class BaseDecisionAgent:
                     "title": "string",
                     "memory_type": "decision_case|decision_postmortem|external_reference_decision",
                     "fit": "high|medium|low",
+                    "fit_dimensions": ["string"],
                     "why_relevant": "string",
                 }
             ],
@@ -701,6 +721,7 @@ class BaseDecisionAgent:
         reference_cases: list[dict[str, str]] = []
         for document in decision_context.get("documents", [])[:3]:
             metadata = dict(document.get("metadata", {}))
+            fit_dimensions = self._derive_fit_dimensions(document.get("match_reasons", []))
             reference_cases.append(
                 {
                     "title": str(document.get("title", "")).strip() or "Untitled decision case",
@@ -708,9 +729,12 @@ class BaseDecisionAgent:
                     or "decision_case",
                     "fit": str(document.get("fit") or metadata.get("fit") or "medium").strip().lower()
                     or "medium",
-                    "why_relevant": "; ".join(document.get("match_reasons", [])[:2])
-                    or str(metadata.get("subject", "")).strip()
-                    or "Retrieved as a potentially similar decision-memory case.",
+                    "fit_dimensions": fit_dimensions,
+                    "why_relevant": self._build_reference_case_reason(
+                        fit_dimensions,
+                        document.get("match_reasons", []),
+                        fallback_subject=str(metadata.get("subject", "")).strip(),
+                    ),
                 }
             )
         return reference_cases
@@ -727,12 +751,27 @@ class BaseDecisionAgent:
             )
 
         fits = [str(case.get("fit", "low")).strip().lower() for case in reference_cases]
+        has_portfolio_state_match = any(
+            "portfolio_state" in str(dimension).strip().lower()
+            for case in reference_cases
+            for dimension in case.get("fit_dimensions", [])
+        )
         if any(fit == "high" for fit in fits):
+            if has_portfolio_state_match:
+                return (
+                    "At least one reference case shows high scenario fit, including portfolio-state "
+                    "similarity, but it remains supporting context rather than an instruction to copy."
+                )
             return (
                 "At least one reference case shows high scenario fit, but it remains supporting "
                 "context rather than an instruction to copy."
             )
         if any(fit == "medium" for fit in fits):
+            if has_portfolio_state_match:
+                return (
+                    "Reference cases show partial scenario fit, including some portfolio-state "
+                    "similarity, and were used to frame similarities and differences rather than to force a decision."
+                )
             return (
                 "Reference cases show partial scenario fit and were used to frame similarities and "
                 "differences, not to force a decision."
@@ -741,6 +780,148 @@ class BaseDecisionAgent:
             "The retrieved reference cases have weak scenario fit, so they mainly serve as a "
             "confidence check rather than a directional guide."
         )
+
+    def _build_decision_summary(
+        self,
+        task: DecisionTask,
+        *,
+        recommendation: str,
+        reference_cases: list[dict[str, Any]],
+    ) -> str:
+        """Compose a concise top-line summary that reflects stance and context."""
+        symbol_or_subject = task.symbol or task.subject
+        current_position = self._find_symbol_position(task.portfolio_context or {}, task.symbol)
+        current_weight = self._extract_position_weight(current_position)
+        max_weight = self._extract_max_single_name_pct(task.portfolio_context or {})
+        top_case = reference_cases[0] if reference_cases else {}
+        top_case_fit = str(top_case.get("fit", "")).strip().lower()
+
+        if recommendation == "consider_reduce" and current_weight is not None:
+            summary = (
+                f"The decision layer leans toward reducing {symbol_or_subject} exposure because "
+                f"the current position is already about {current_weight:.1f}%."
+            )
+        elif recommendation == "consider_buy":
+            summary = (
+                f"The decision layer views {symbol_or_subject} as a measured add candidate rather "
+                "than a setup for aggressive sizing."
+            )
+        elif recommendation == "hold" and current_weight is not None:
+            summary = (
+                f"The decision layer favors holding the existing {symbol_or_subject} exposure rather "
+                "than changing position size immediately."
+            )
+        elif recommendation == "keep_watch":
+            summary = (
+                f"The decision layer prefers keeping {symbol_or_subject} on watch until timing or "
+                "analyst alignment improves."
+            )
+        elif recommendation == "no_trade":
+            summary = (
+                f"The decision layer does not see enough current evidence to act on {symbol_or_subject}."
+            )
+        else:
+            summary = f"The decision layer currently supports a {recommendation} stance on {symbol_or_subject}."
+
+        if max_weight is not None and current_weight is not None and current_weight >= max_weight * 0.9:
+            summary += f" Current exposure is already close to the single-name limit near {max_weight:.1f}%."
+        elif max_weight is not None and recommendation == "consider_buy":
+            summary += f" Any new exposure should still respect the single-name limit near {max_weight:.1f}%."
+
+        if top_case_fit == "high":
+            top_case_title = str(top_case.get("title", "")).strip() or "the top reference case"
+            summary += f" A high-fit historical comparison ({top_case_title}) reinforces this stance."
+        elif top_case_fit == "medium":
+            summary += " Historical comparisons provide partial support, but not enough to force the decision."
+
+        return summary
+
+    def _build_reference_case_rationale(
+        self,
+        reference_cases: list[dict[str, Any]],
+    ) -> str:
+        """Fold the strongest reference-case signal into the main rationale text."""
+        if not reference_cases:
+            return ""
+        top_case = reference_cases[0]
+        title = str(top_case.get("title", "")).strip() or "the top reference case"
+        fit = str(top_case.get("fit", "medium")).strip().lower() or "medium"
+        why_relevant = str(top_case.get("why_relevant", "")).strip()
+        if not why_relevant:
+            return f"The strongest historical comparison was {title} with {fit} fit."
+        return f"The strongest historical comparison was {title} with {fit} fit: {why_relevant}"
+
+    def _derive_decision_confidence(
+        self,
+        task: DecisionTask,
+        *,
+        recommendation: str,
+        reference_cases: list[dict[str, Any]],
+    ) -> str:
+        """Derive decision confidence after applying decision-layer constraints."""
+        confidence_rank = self._confidence_to_rank(task.overall_confidence)
+
+        if self._has_material_conflict(task.cross_analyst_observations):
+            confidence_rank = min(confidence_rank, 1)
+
+        highest_case_fit_rank = self._highest_case_fit_rank(reference_cases)
+        if highest_case_fit_rank == 0:
+            confidence_rank = min(confidence_rank, 1)
+        elif highest_case_fit_rank == 1:
+            confidence_rank = min(confidence_rank, 1)
+
+        if self._portfolio_constraint_is_binding(task, recommendation):
+            confidence_rank = min(confidence_rank, 1)
+
+        if recommendation == "consider_buy" and not task.key_signals:
+            confidence_rank = min(confidence_rank, 1)
+
+        return self._rank_to_confidence(confidence_rank)
+
+    def _coerce_decision_confidence(
+        self,
+        proposed_confidence: Any,
+        *,
+        task: DecisionTask,
+        recommendation: str,
+        reference_cases: list[dict[str, Any]],
+    ) -> str:
+        """Clamp model confidence so it cannot exceed decision-layer constraints."""
+        model_rank = self._confidence_to_rank(proposed_confidence)
+        fallback_rank = self._confidence_to_rank(
+            self._derive_decision_confidence(
+                task,
+                recommendation=recommendation,
+                reference_cases=reference_cases,
+            )
+        )
+        return self._rank_to_confidence(min(model_rank, fallback_rank))
+
+    def _build_confidence_rationale(
+        self,
+        task: DecisionTask,
+        *,
+        confidence: str,
+        recommendation: str,
+        reference_cases: list[dict[str, Any]],
+    ) -> str:
+        """Explain why the final confidence is bounded at its current level."""
+        reasons: list[str] = [f"Final decision confidence is {confidence}."]
+
+        if self._has_material_conflict(task.cross_analyst_observations):
+            reasons.append("Cross-analyst disagreement prevents a higher-confidence stance.")
+
+        highest_case_fit_rank = self._highest_case_fit_rank(reference_cases)
+        if highest_case_fit_rank <= 1:
+            reasons.append("Historical case support is only partial or weak.")
+
+        if self._portfolio_constraint_is_binding(task, recommendation):
+            reasons.append("Current portfolio constraints limit how forcefully the stance can be expressed.")
+
+        if len(reasons) == 1 and confidence == "high":
+            reasons.append("Analyst evidence, portfolio context, and reference-case support are aligned.")
+
+        return " ".join(reasons)
 
     def _normalize_string_list(self, value: Any, *, fallback: list[str]) -> list[str]:
         """Normalize a model value into a non-empty list of strings."""
@@ -776,15 +957,137 @@ class BaseDecisionAgent:
                 str(item.get("why_relevant", "")).strip()
                 or "Returned by the decision-memory retrieval layer."
             )
+            fit_dimensions = self._normalize_string_list(
+                item.get("fit_dimensions"),
+                fallback=["general_similarity"],
+            )
+            if not str(item.get("why_relevant", "")).strip():
+                why_relevant = self._build_reference_case_reason(
+                    fit_dimensions,
+                    [],
+                    fallback_subject=title,
+                )
             normalized_cases.append(
                 {
                     "title": title,
                     "memory_type": memory_type,
                     "fit": fit,
+                    "fit_dimensions": fit_dimensions,
                     "why_relevant": why_relevant,
                 }
             )
         return normalized_cases or fallback
+
+    def _derive_fit_dimensions(self, match_reasons: list[str]) -> list[str]:
+        """Map retrieval match reasons into stable fit-dimension labels."""
+        dimensions: list[str] = []
+        for reason in match_reasons:
+            normalized = str(reason).strip().lower()
+            if not normalized:
+                continue
+            if "same symbol" in normalized or "similar subject" in normalized:
+                dimensions.append("identity")
+            elif "market regime" in normalized:
+                dimensions.append("market_regime")
+            elif "analyst alignment" in normalized:
+                dimensions.append("analyst_alignment")
+            elif "signal tags" in normalized:
+                dimensions.append("signals")
+            elif "risk tags" in normalized:
+                dimensions.append("risks")
+            elif "timing tags" in normalized:
+                dimensions.append("timing")
+            elif "portfolio state tags" in normalized:
+                dimensions.append("portfolio_state")
+            elif "textual overlap" in normalized:
+                dimensions.append("text_similarity")
+        return self._normalize_string_list(dimensions, fallback=["general_similarity"])
+
+    def _build_reference_case_reason(
+        self,
+        fit_dimensions: list[str],
+        match_reasons: list[str],
+        *,
+        fallback_subject: str,
+    ) -> str:
+        """Compose a readable reason string from fit dimensions and raw match reasons."""
+        dimension_labels = [self._describe_fit_dimension(dimension) for dimension in fit_dimensions]
+        dimension_labels = self._normalize_string_list(dimension_labels, fallback=[])
+        if dimension_labels:
+            dimension_summary = ", ".join(dimension_labels[:3])
+            reason_prefix = f"Relevant due to {dimension_summary}"
+        else:
+            reason_prefix = "Relevant due to general scenario similarity"
+
+        raw_reasons = [str(reason).strip() for reason in match_reasons if str(reason).strip()]
+        if raw_reasons:
+            return f"{reason_prefix}; key matches include {', '.join(raw_reasons[:2])}."
+        if fallback_subject:
+            return f"{reason_prefix}; the case centers on {fallback_subject}."
+        return f"{reason_prefix}."
+
+    def _describe_fit_dimension(self, dimension: str) -> str:
+        """Convert a fit-dimension label into a short user-facing phrase."""
+        mapping = {
+            "identity": "identity overlap",
+            "market_regime": "market regime similarity",
+            "analyst_alignment": "analyst alignment similarity",
+            "signals": "signal overlap",
+            "risks": "risk overlap",
+            "timing": "timing similarity",
+            "portfolio_state": "portfolio state similarity",
+            "text_similarity": "textual similarity",
+            "general_similarity": "general scenario similarity",
+        }
+        return mapping.get(dimension, dimension.replace("_", " "))
+
+    def _highest_case_fit_rank(self, reference_cases: list[dict[str, Any]]) -> int:
+        """Return the strongest fit rank among retrieved reference cases."""
+        highest_rank = 0
+        for case in reference_cases:
+            highest_rank = max(
+                highest_rank,
+                {"low": 1, "medium": 2, "high": 3}.get(
+                    str(case.get("fit", "low")).strip().lower(),
+                    0,
+                ),
+            )
+        return highest_rank
+
+    def _portfolio_constraint_is_binding(
+        self,
+        task: DecisionTask,
+        recommendation: str,
+    ) -> bool:
+        """Return whether current portfolio constraints should lower confidence."""
+        portfolio_context = task.portfolio_context or {}
+        current_position = self._find_symbol_position(portfolio_context, task.symbol)
+        current_weight = self._extract_position_weight(current_position)
+        max_weight = self._extract_max_single_name_pct(portfolio_context)
+        cash_pct = self._extract_percent(portfolio_context.get("cash_pct"))
+
+        if (
+            current_weight is not None
+            and max_weight is not None
+            and current_weight >= max_weight * 0.9
+        ):
+            return True
+        if recommendation == "consider_buy" and cash_pct is not None and cash_pct < 5:
+            return True
+        return False
+
+    def _confidence_to_rank(self, value: Any) -> int:
+        """Convert confidence labels into sortable numeric ranks."""
+        confidence = self._normalize_confidence(value)
+        return {"low": 1, "medium": 2, "high": 3}[confidence]
+
+    def _rank_to_confidence(self, rank: int) -> str:
+        """Convert confidence ranks back into supported labels."""
+        if rank >= 3:
+            return "high"
+        if rank <= 1:
+            return "low"
+        return "medium"
 
     def _normalize_confidence(self, value: Any) -> str:
         """Normalize confidence labels into the supported set."""

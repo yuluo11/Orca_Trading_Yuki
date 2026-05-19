@@ -22,3 +22,4 @@ Output expectations:
 - Explain the reasoning behind the recommendation.
 - Highlight the most important aggregated risks.
 - Mention which reference cases were relevant and how well they fit.
+- Weave the most relevant reference-case lesson into the main rationale instead of isolating it as a disconnected note.
