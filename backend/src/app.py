@@ -15,6 +15,8 @@ from .agents.analysts.base_agent import (
 )
 from .agents.decision import DecisionAdvisoryAgent, DecisionTask
 from .agents.decision.base_agent import FilePromptProvider as DecisionFilePromptProvider
+from .agents.reflection import ReflectionAgent, ReflectionTask
+from .agents.reflection.base_agent import FilePromptProvider as ReflectionFilePromptProvider
 from .agents.analysts.graph_agent import GraphAnalystAgent
 from .agents.analysts.market_agent import MarketAnalystAgent
 from .agents.analysts.news_agent import NewsAnalystAgent
@@ -27,12 +29,14 @@ from .services.analysts.news_service import NewsAnalystService
 from .services.analysts.sentiment_service import SentimentAnalystService
 from .services.analysts.social_service import SocialAnalystService
 from .services.decision import DecisionKnowledgeService
+from .services.reflection import ReflectionContextService
 from .tools.analyst.tooling import AnalystToolRegistry, KnowledgeBaseSearchTool
 
 SRC_DIR = Path(__file__).resolve().parent
 PROMPTS_ROOT_DIR = SRC_DIR / "prompts"
 ANALYST_PROMPTS_DIR = PROMPTS_ROOT_DIR / "analysts"
 DECISION_PROMPTS_DIR = PROMPTS_ROOT_DIR / "decision"
+REFLECTION_PROMPTS_DIR = PROMPTS_ROOT_DIR / "reflection"
 DEFAULT_ANALYST_SEQUENCE = (
     "market_analyst",
     "news_analyst",
@@ -55,6 +59,7 @@ class AppRuntimeState(TypedDict, total=False):
     messages: list[Any]
     analyst_outputs: dict[str, dict[str, Any]]
     decision_output: dict[str, Any]
+    reflection_output: dict[str, Any]
     portfolio_context: dict[str, Any] | None
 
 
@@ -79,6 +84,13 @@ def build_decision_prompt_provider(
 ) -> DecisionFilePromptProvider:
     """Build the prompt provider for the decision advisory layer."""
     return DecisionFilePromptProvider(prompts_dir or DECISION_PROMPTS_DIR)
+
+
+def build_reflection_prompt_provider(
+    prompts_dir: str | Path | None = None,
+) -> ReflectionFilePromptProvider:
+    """Build the prompt provider for the post-decision reflection layer."""
+    return ReflectionFilePromptProvider(prompts_dir or REFLECTION_PROMPTS_DIR)
 
 
 def build_graph_analyst_agent(
@@ -247,6 +259,22 @@ def build_decision_advisory_agent(
     return DecisionAdvisoryAgent(
         service=service,
         prompt_provider=prompt_provider or build_decision_prompt_provider(),
+        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+    )
+
+
+def build_reflection_agent(
+    *,
+    repository: KnowledgeRepository | None = None,
+    prompt_provider: ReflectionFilePromptProvider | None = None,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> ReflectionAgent:
+    """Assemble the post-decision reflection agent and prompt assets."""
+    service = ReflectionContextService(repository=repository)
+    return ReflectionAgent(
+        service=service,
+        prompt_provider=prompt_provider or build_reflection_prompt_provider(),
         llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
     )
 
@@ -448,6 +476,42 @@ def run_decision_advisory(
         max_documents=max_documents,
     )
     agent = build_decision_advisory_agent(llm_client=llm_client, llm=llm)
+    return agent.invoke(task)
+
+
+def run_reflection(
+    *,
+    decision_output: dict[str, Any],
+    analyst_payload: dict[str, Any] | None = None,
+    portfolio_context: dict[str, Any] | None = None,
+    execution_summary: dict[str, Any] | None = None,
+    outcome_metrics: dict[str, Any] | None = None,
+    exit_context: dict[str, Any] | None = None,
+    post_trade_notes: str | None = None,
+    realized_outcome: dict[str, Any] | None = None,
+    feedback_notes: str | None = None,
+    datasets: tuple[DatasetName, ...] | None = None,
+    metadata_filter: dict[str, Any] | None = None,
+    max_documents: int | None = None,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> dict[str, Any]:
+    """Run the post-decision reflection agent over a finalized decision payload."""
+    task = ReflectionTask.from_decision_payload(
+        decision_output,
+        analyst_payload=analyst_payload,
+        portfolio_context=portfolio_context,
+        execution_summary=execution_summary,
+        outcome_metrics=outcome_metrics,
+        exit_context=exit_context,
+        post_trade_notes=post_trade_notes,
+        realized_outcome=realized_outcome,
+        feedback_notes=feedback_notes,
+        datasets=datasets,
+        metadata_filter=metadata_filter,
+        max_documents=max_documents,
+    )
+    agent = build_reflection_agent(llm_client=llm_client, llm=llm)
     return agent.invoke(task)
 
 
