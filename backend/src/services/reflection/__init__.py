@@ -6,6 +6,7 @@ to debug and review.
 """
 
 from .context_service import ReflectionContextService
+from .persistence_service import ReflectionPersistenceService
 from .schema import (
     ALLOWED_CONFIDENCE_CHANGES,
     assess_memory_persistence_candidate,
@@ -23,6 +24,7 @@ from .schema import (
 __all__ = [
     "ALLOWED_CONFIDENCE_CHANGES",
     "ReflectionContextService",
+    "ReflectionPersistenceService",
     "assess_memory_persistence_candidate",
     "assess_post_trade_review_completeness",
     "build_candidate_postmortem_record",

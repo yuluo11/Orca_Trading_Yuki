@@ -28,8 +28,12 @@ from .services.analysts.market_service import MarketAnalystService
 from .services.analysts.news_service import NewsAnalystService
 from .services.analysts.sentiment_service import SentimentAnalystService
 from .services.analysts.social_service import SocialAnalystService
-from .services.decision import DecisionKnowledgeService
-from .services.reflection import ReflectionContextService
+from .services.decision import (
+    DecisionGuidanceObservationAnalyticsService,
+    DecisionGuidanceObservationService,
+    DecisionKnowledgeService,
+)
+from .services.reflection import ReflectionContextService, ReflectionPersistenceService
 from .tools.analyst.tooling import AnalystToolRegistry, KnowledgeBaseSearchTool
 
 SRC_DIR = Path(__file__).resolve().parent
@@ -279,6 +283,30 @@ def build_reflection_agent(
     )
 
 
+def build_reflection_persistence_service(
+    *,
+    repository: KnowledgeRepository | None = None,
+) -> ReflectionPersistenceService:
+    """Build the reflection persistence service for postmortem memory writeback."""
+    return ReflectionPersistenceService(repository=repository)
+
+
+def build_decision_guidance_observation_service(
+    *,
+    repository: KnowledgeRepository | None = None,
+) -> DecisionGuidanceObservationService:
+    """Build the decision guidance observation persistence service."""
+    return DecisionGuidanceObservationService(repository=repository)
+
+
+def build_decision_guidance_observation_analytics_service(
+    *,
+    repository: KnowledgeRepository | None = None,
+) -> DecisionGuidanceObservationAnalyticsService:
+    """Build the decision guidance observation analytics service."""
+    return DecisionGuidanceObservationAnalyticsService(repository=repository)
+
+
 def run_graph_analyst(
     *,
     subject: str,
@@ -513,6 +541,123 @@ def run_reflection(
     )
     agent = build_reflection_agent(llm_client=llm_client, llm=llm)
     return agent.invoke(task)
+
+
+def persist_reflection_memory(
+    *,
+    reflection_result: dict[str, Any],
+    dataset: DatasetName = "dynamic",
+    force: bool = False,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Persist a reflection candidate memory into the processed knowledge base."""
+    service = build_reflection_persistence_service(repository=repository)
+    return service.persist_reflection_result(
+        reflection_result,
+        dataset=dataset,
+        force=force,
+    )
+
+
+def persist_decision_guidance_observation(
+    *,
+    decision_result: dict[str, Any],
+    dataset: DatasetName = "dynamic",
+    force: bool = False,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Persist a structured observation describing applied postmortem guidance."""
+    service = build_decision_guidance_observation_service(repository=repository)
+    return service.persist_guidance_observation(
+        decision_result,
+        dataset=dataset,
+        force=force,
+    )
+
+
+def summarize_decision_guidance_observations(
+    *,
+    dataset: DatasetName = "dynamic",
+    symbol: str | None = None,
+    recommendation: str | None = None,
+    top_n: int = 5,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Summarize persisted decision-guidance observation records."""
+    service = build_decision_guidance_observation_analytics_service(repository=repository)
+    return service.summarize_observations(
+        dataset=dataset,
+        symbol=symbol,
+        recommendation=recommendation,
+        top_n=top_n,
+    )
+
+
+def summarize_decision_guidance_priors(
+    *,
+    datasets: tuple[DatasetName, ...] | list[DatasetName] | None = None,
+    symbol: str | None = None,
+    recommendation: str | None = None,
+    top_n: int = 3,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Summarize recurring applied-guidance priors for future decision runs."""
+    service = build_decision_guidance_observation_analytics_service(repository=repository)
+    return service.summarize_guidance_priors(
+        datasets=datasets,
+        symbol=symbol,
+        recommendation=recommendation,
+        top_n=top_n,
+    )
+
+
+def run_reflection_and_persist(
+    *,
+    decision_output: dict[str, Any],
+    analyst_payload: dict[str, Any] | None = None,
+    portfolio_context: dict[str, Any] | None = None,
+    execution_summary: dict[str, Any] | None = None,
+    outcome_metrics: dict[str, Any] | None = None,
+    exit_context: dict[str, Any] | None = None,
+    post_trade_notes: str | None = None,
+    realized_outcome: dict[str, Any] | None = None,
+    feedback_notes: str | None = None,
+    datasets: tuple[DatasetName, ...] | None = None,
+    metadata_filter: dict[str, Any] | None = None,
+    max_documents: int | None = None,
+    persistence_dataset: DatasetName = "dynamic",
+    persistence_force: bool = False,
+    repository: KnowledgeRepository | None = None,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> dict[str, Any]:
+    """Run reflection and then persist the candidate memory when eligible."""
+    reflection_result = run_reflection(
+        decision_output=decision_output,
+        analyst_payload=analyst_payload,
+        portfolio_context=portfolio_context,
+        execution_summary=execution_summary,
+        outcome_metrics=outcome_metrics,
+        exit_context=exit_context,
+        post_trade_notes=post_trade_notes,
+        realized_outcome=realized_outcome,
+        feedback_notes=feedback_notes,
+        datasets=datasets,
+        metadata_filter=metadata_filter,
+        max_documents=max_documents,
+        llm_client=llm_client,
+        llm=llm,
+    )
+    persistence_result = persist_reflection_memory(
+        reflection_result=reflection_result,
+        dataset=persistence_dataset,
+        force=persistence_force,
+        repository=repository,
+    )
+    return {
+        "reflection": reflection_result,
+        "persistence": persistence_result,
+    }
 
 
 def run_decision_realization(
