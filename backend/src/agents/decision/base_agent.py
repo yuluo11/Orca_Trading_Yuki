@@ -9,6 +9,7 @@ from typing import Any, Protocol, TypedDict
 from ...knowledge.repository import DatasetName
 from ...llm.client import LLMClient, LLMRunnable, ensure_llm_client
 from ...services.decision.memory import DecisionKnowledgeService
+from ...services.decision.setup_taxonomy import infer_setup_labels
 
 ALLOWED_RECOMMENDATIONS = {
     "consider_buy",
@@ -273,15 +274,24 @@ class BaseDecisionAgent:
                 "Return a JSON object with keys: decision_summary, recommendation, "
                 "portfolio_context_used, portfolio_context_summary, position_impact, "
                 "timing_decision, action_conditions, no_action_reasons, aggregated_risks, "
-                "rationale, confidence, reference_cases, case_fit_assessment, and "
-                "applied_postmortem_guidance. This is advisory only and must not imply trade "
-                "execution. Use portfolio context when it is provided, use scenario fit rather "
-                "than raw similarity when discussing reference cases, and incorporate any "
-                "retrieved postmortem lessons as bounded future-risk guidance rather than as "
-                "instructions to copy. Treat recurring guidance priors as weak experience "
-                "signals, not hard rules. When postmortem lessons or recurring guidance priors "
+                "rationale, confidence, reference_cases, case_fit_assessment, "
+                "applied_postmortem_guidance, and applied_setup_labels. This is advisory only "
+                "and must not imply trade execution. Use portfolio context when it is provided, "
+                "use scenario fit rather than raw similarity when discussing reference cases, "
+                "and incorporate any retrieved postmortem lessons as bounded future-risk "
+                "guidance rather than as instructions to copy. Treat recurring guidance priors "
+                "as weak experience signals, not hard rules. Treat setup outcome priors as weak "
+                "historical result context, especially when they show repeated failed or mixed "
+                "outcomes for the current setup, but do not let them override present evidence. "
+                "If setup recommendation outcome priors are available, use them as a bounded check "
+                "on whether the current recommendation has historically resolved well or poorly in "
+                "similar setups. "
+                "When setup labels are available, mention the most relevant current or historical "
+                "setup label explicitly in the rationale when it helps explain the recommendation, "
+                "and return it in applied_setup_labels. When postmortem lessons, recurring "
+                "guidance priors, setup outcome priors, or setup recommendation outcome priors "
                 "are relevant, mention the most important one explicitly in the rationale, "
-                "no_action_reasons, or action_conditions, and also return it in "
+                "no_action_reasons, or action_conditions, and also return the applied lesson in "
                 "applied_postmortem_guidance."
             ),
         }
@@ -312,6 +322,13 @@ class BaseDecisionAgent:
             "evidence": decision_context.get("evidence", []),
             "postmortem_lessons": decision_context.get("postmortem_lessons", []),
             "guidance_priors": decision_context.get("guidance_priors", {}),
+            "setup_outcome_priors": decision_context.get("setup_outcome_priors", {}),
+            "setup_recommendation_outcome_priors": decision_context.get(
+                "setup_recommendation_outcome_priors", {}
+            ),
+            "current_setup_labels": infer_setup_labels(
+                decision_context.get("scenario_profile", {})
+            ),
         }
 
     def invoke(self, task: DecisionTask) -> dict[str, Any]:
@@ -370,6 +387,12 @@ class BaseDecisionAgent:
         no_action_reasons = self._fallback_no_action_reasons(task, recommendation)
         postmortem_lessons = self._fallback_postmortem_lessons(decision_context)
         recurring_guidance = self._fallback_guidance_priors(decision_context)
+        setup_outcome_summary = self._fallback_setup_outcome_priors(decision_context)
+        recommendation_outcome_summary = self._fallback_setup_recommendation_outcome_priors(
+            decision_context,
+            recommendation=recommendation,
+        )
+        applied_setup_labels = self._fallback_applied_setup_labels(decision_context)
         confidence, confidence_note = self._fallback_confidence(
             task,
             decision_context=decision_context,
@@ -399,6 +422,14 @@ class BaseDecisionAgent:
         if reference_cases:
             rationale_parts.append(
                 f"Referenced {len(reference_cases)} decision-memory case(s) as supporting context."
+            )
+        if setup_outcome_summary:
+            rationale_parts.append(setup_outcome_summary)
+        if recommendation_outcome_summary:
+            rationale_parts.append(recommendation_outcome_summary)
+        if applied_setup_labels:
+            rationale_parts.append(
+                f"Relevant setup context: {', '.join(applied_setup_labels[:2])}."
             )
         if postmortem_lessons:
             rationale_parts.append(
@@ -446,6 +477,7 @@ class BaseDecisionAgent:
             "reference_cases": reference_cases,
             "case_fit_assessment": case_fit_assessment,
             "applied_postmortem_guidance": applied_postmortem_guidance,
+            "applied_setup_labels": applied_setup_labels,
             "prompt": prompt,
             "decision_context": decision_context,
         }
@@ -519,6 +551,10 @@ class BaseDecisionAgent:
                 llm_result.get("applied_postmortem_guidance"),
                 fallback=fallback_result["applied_postmortem_guidance"],
             ),
+            "applied_setup_labels": self._normalize_string_list(
+                llm_result.get("applied_setup_labels"),
+                fallback=fallback_result["applied_setup_labels"],
+            ),
             "prompt": prompt,
             "decision_context": decision_context,
             "raw_model_output": llm_result,
@@ -548,6 +584,7 @@ class BaseDecisionAgent:
             ],
             "case_fit_assessment": "string",
             "applied_postmortem_guidance": ["string"],
+            "applied_setup_labels": ["string"],
         }
 
     def build_agent_message(self, result: dict[str, Any]) -> Any:
@@ -805,6 +842,104 @@ class BaseDecisionAgent:
                 lessons.append(label)
         return lessons
 
+    def _fallback_applied_setup_labels(
+        self,
+        decision_context: dict[str, Any],
+    ) -> list[str]:
+        """Return the most relevant setup labels used by the current recommendation."""
+        labels: list[str] = []
+        for label in infer_setup_labels(decision_context.get("scenario_profile", {})):
+            if label not in labels:
+                labels.append(label)
+        for document in decision_context.get("documents", [])[:2]:
+            if not isinstance(document, dict):
+                continue
+            metadata = dict(document.get("metadata", {}))
+            for raw_label in metadata.get("setup_labels", [])[:2] if isinstance(metadata.get("setup_labels", []), list) else []:
+                label = str(raw_label).strip().lower()
+                if label and label not in labels:
+                    labels.append(label)
+            primary_label = str(metadata.get("primary_setup_label", "")).strip().lower()
+            if primary_label and primary_label not in labels:
+                labels.append(primary_label)
+        return labels[:3]
+
+    def _fallback_setup_outcome_priors(
+        self,
+        decision_context: dict[str, Any],
+    ) -> str:
+        """Return a short setup-outcome summary when historical postmortems are informative."""
+        priors = dict(decision_context.get("setup_outcome_priors", {}))
+        reviewed_observations = int(priors.get("reviewed_observations", 0) or 0)
+        if reviewed_observations < 2:
+            return ""
+
+        outcome_breakdown = priors.get("outcome_breakdown", [])
+        if not isinstance(outcome_breakdown, list) or not outcome_breakdown:
+            return ""
+
+        scope_parts = [
+            item
+            for item in (
+                str(priors.get("symbol") or "").strip().upper() or None,
+                str(priors.get("market_regime", "")).strip().lower() or None,
+                str(priors.get("primary_setup_label", "")).strip().lower() or None,
+            )
+            if item
+        ]
+        scope_prefix = f"For {' / '.join(scope_parts)}, " if scope_parts else ""
+        dominant_outcomes = ", ".join(
+            f"{item['label']} ({item['count']})"
+            for item in outcome_breakdown[:2]
+            if isinstance(item, dict) and str(item.get("label", "")).strip()
+        )
+        if not dominant_outcomes:
+            return ""
+        return (
+            f"{scope_prefix}historical postmortem outcomes for this setup have most often been "
+            f"{dominant_outcomes}."
+        )
+
+    def _fallback_setup_recommendation_outcome_priors(
+        self,
+        decision_context: dict[str, Any],
+        *,
+        recommendation: str,
+    ) -> str:
+        """Return a short summary for how the current recommendation resolved in similar setups."""
+        priors = dict(decision_context.get("setup_recommendation_outcome_priors", {}))
+        recommendation_outcomes = priors.get("recommendation_outcomes", [])
+        if not isinstance(recommendation_outcomes, list) or not recommendation_outcomes:
+            return ""
+
+        matched_item = self._matching_recommendation_outcome_item(
+            recommendation_outcomes,
+            recommendation=recommendation,
+        )
+        if not matched_item:
+            return ""
+
+        total_observations = int(matched_item.get("total_observations", 0) or 0)
+        dominant_outcome = str(matched_item.get("dominant_outcome", "")).strip().lower()
+        if total_observations < 2 or not dominant_outcome:
+            return ""
+
+        scope_parts = [
+            item
+            for item in (
+                str(priors.get("symbol") or "").strip().upper() or None,
+                str(priors.get("market_regime", "")).strip().lower() or None,
+                str(priors.get("primary_setup_label", "")).strip().lower() or None,
+            )
+            if item
+        ]
+        scope_prefix = f"For {' / '.join(scope_parts)}, " if scope_parts else ""
+        return (
+            f"{scope_prefix}{recommendation} has historically resolved most often as "
+            f"{dominant_outcome} across {total_observations} similar case"
+            f"{'' if total_observations == 1 else 's'}."
+        )
+
     def _fallback_case_fit_assessment(
         self,
         reference_cases: list[dict[str, str]],
@@ -839,44 +974,96 @@ class BaseDecisionAgent:
         decision_context: dict[str, Any],
         recommendation: str,
     ) -> tuple[str, str]:
-        """Apply bounded confidence adjustments using recurring guidance priors."""
+        """Apply bounded confidence adjustments using historical guidance and outcomes."""
         base_confidence = self._normalize_confidence(task.overall_confidence)
+        note_parts: list[str] = []
+
         priors = dict(decision_context.get("guidance_priors", {}))
         total_observations = int(priors.get("total_observations", 0) or 0)
-        if total_observations < 2:
-            return base_confidence, ""
-
         recommendation_breakdown = priors.get("recommendation_breakdown", [])
-        if not isinstance(recommendation_breakdown, list) or not recommendation_breakdown:
-            return base_confidence, ""
+        if total_observations >= 2 and isinstance(recommendation_breakdown, list) and recommendation_breakdown:
+            dominant_item = recommendation_breakdown[0]
+            if isinstance(dominant_item, dict):
+                dominant_recommendation = str(dominant_item.get("label", "")).strip().lower()
+                dominant_count = int(dominant_item.get("count", 0) or 0)
+                if dominant_count >= 2 and self._is_confidence_conflict(
+                    recommendation=recommendation,
+                    dominant_recommendation=dominant_recommendation,
+                ):
+                    symbol = str(priors.get("symbol") or task.symbol or "").strip().upper()
+                    market_regime = str(priors.get("market_regime", "")).strip().lower()
+                    scope_parts = [item for item in (symbol, market_regime) if item]
+                    scope_prefix = f"For {' / '.join(scope_parts)}, " if scope_parts else ""
+                    note_parts.append(
+                        f"{scope_prefix}recurring guidance has more often accompanied "
+                        f"{dominant_recommendation} decisions ({dominant_count} observations), so "
+                        "confidence stays one step lower."
+                    )
 
-        dominant_item = recommendation_breakdown[0]
-        if not isinstance(dominant_item, dict):
-            return base_confidence, ""
-
-        dominant_recommendation = str(dominant_item.get("label", "")).strip().lower()
-        dominant_count = int(dominant_item.get("count", 0) or 0)
-        if dominant_count < 2:
-            return base_confidence, ""
-
-        if not self._is_confidence_conflict(
+        setup_outcome_priors = dict(decision_context.get("setup_outcome_priors", {}))
+        reviewed_observations = int(setup_outcome_priors.get("reviewed_observations", 0) or 0)
+        outcome_bias = str(setup_outcome_priors.get("outcome_bias", "")).strip().lower()
+        if reviewed_observations >= 2 and self._is_outcome_prior_conflict(
             recommendation=recommendation,
-            dominant_recommendation=dominant_recommendation,
+            outcome_bias=outcome_bias,
         ):
+            scope_parts = [
+                item
+                for item in (
+                    str(setup_outcome_priors.get("symbol") or task.symbol or "").strip().upper() or None,
+                    str(setup_outcome_priors.get("market_regime", "")).strip().lower() or None,
+                    str(setup_outcome_priors.get("primary_setup_label", "")).strip().lower() or None,
+                )
+                if item
+            ]
+            scope_prefix = f"For {' / '.join(scope_parts)}, " if scope_parts else ""
+            note_parts.append(
+                f"{scope_prefix}reviewed postmortem outcomes for this setup have skewed "
+                f"{outcome_bias} across {reviewed_observations} cases, so confidence stays one "
+                "step lower."
+            )
+
+        recommendation_outcome_priors = dict(
+            decision_context.get("setup_recommendation_outcome_priors", {})
+        )
+        matched_recommendation_outcome = self._matching_recommendation_outcome_item(
+            recommendation_outcome_priors.get("recommendation_outcomes", []),
+            recommendation=recommendation,
+        )
+        if isinstance(matched_recommendation_outcome, dict):
+            total_recommendation_observations = int(
+                matched_recommendation_outcome.get("total_observations", 0) or 0
+            )
+            recommendation_outcome_bias = str(
+                matched_recommendation_outcome.get("outcome_bias", "")
+            ).strip().lower()
+            if total_recommendation_observations >= 2 and self._is_recommendation_outcome_prior_conflict(
+                recommendation=recommendation,
+                outcome_bias=recommendation_outcome_bias,
+            ):
+                scope_parts = [
+                    item
+                    for item in (
+                        str(recommendation_outcome_priors.get("symbol") or task.symbol or "").strip().upper() or None,
+                        str(recommendation_outcome_priors.get("market_regime", "")).strip().lower() or None,
+                        str(recommendation_outcome_priors.get("primary_setup_label", "")).strip().lower() or None,
+                    )
+                    if item
+                ]
+                scope_prefix = f"For {' / '.join(scope_parts)}, " if scope_parts else ""
+                note_parts.append(
+                    f"{scope_prefix}{recommendation} has historically resolved in a more "
+                    f"{recommendation_outcome_bias} way across {total_recommendation_observations} "
+                    "similar cases, so confidence stays one step lower."
+                )
+
+        if not note_parts:
             return base_confidence, ""
 
         adjusted_confidence = self._downgrade_confidence(base_confidence)
         if adjusted_confidence == base_confidence:
             return base_confidence, ""
-
-        symbol = str(priors.get("symbol") or task.symbol or "").strip().upper()
-        symbol_prefix = f"For {symbol}, " if symbol else ""
-        note = (
-            f"{symbol_prefix}recurring guidance has more often accompanied "
-            f"{dominant_recommendation} decisions ({dominant_count} observations), so "
-            f"confidence stays one step lower."
-        )
-        return adjusted_confidence, note
+        return adjusted_confidence, " ".join(note_parts)
 
     def _normalize_string_list(self, value: Any, *, fallback: list[str]) -> list[str]:
         """Normalize a model value into a non-empty list of strings."""
@@ -948,6 +1135,48 @@ class BaseDecisionAgent:
             return dominant_recommendation in {"keep_watch", "hold", "no_trade", "consider_reduce"}
         if recommendation == "consider_reduce":
             return dominant_recommendation in {"consider_buy", "hold"}
+        return False
+
+    def _matching_recommendation_outcome_item(
+        self,
+        recommendation_outcomes: list[dict[str, Any]],
+        *,
+        recommendation: str,
+    ) -> dict[str, Any] | None:
+        """Return the summary entry for the current recommendation when available."""
+        target_recommendation = str(recommendation).strip().lower()
+        for item in recommendation_outcomes:
+            if not isinstance(item, dict):
+                continue
+            item_recommendation = str(item.get("recommendation", "")).strip().lower()
+            if item_recommendation == target_recommendation:
+                return item
+        return None
+
+    def _is_outcome_prior_conflict(
+        self,
+        *,
+        recommendation: str,
+        outcome_bias: str,
+    ) -> bool:
+        """Return whether historical setup outcomes argue for lower confidence."""
+        if recommendation == "consider_buy":
+            return outcome_bias == "cautionary"
+        if recommendation == "consider_reduce":
+            return outcome_bias == "constructive"
+        return False
+
+    def _is_recommendation_outcome_prior_conflict(
+        self,
+        *,
+        recommendation: str,
+        outcome_bias: str,
+    ) -> bool:
+        """Return whether recommendation-specific historical outcomes argue for lower confidence."""
+        if recommendation == "consider_buy":
+            return outcome_bias == "cautionary"
+        if recommendation == "consider_reduce":
+            return outcome_bias == "constructive"
         return False
 
     def summarize_portfolio_context(self, portfolio_context: dict[str, Any] | None) -> str:

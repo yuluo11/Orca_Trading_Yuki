@@ -10,6 +10,7 @@ from ....knowledge.indexing import KnowledgeIndexer
 from ....knowledge.repository import DatasetName, KnowledgeRepository
 from ....knowledge.retriever import KnowledgeRetriever, VectorRetrieverBackend
 from ..observation_service import DecisionGuidanceObservationAnalyticsService
+from ..setup_taxonomy import infer_primary_setup_label, infer_setup_labels
 from .schema import (
     normalize_decision_memory_metadata,
     summarize_decision_memory_validation,
@@ -207,6 +208,14 @@ class DecisionKnowledgeService:
         query = self.build_query(task)
         scenario_profile = self.build_scenario_profile(task)
         guidance_priors = self.collect_guidance_priors(task, datasets=selected_datasets)
+        setup_outcome_priors = self.collect_setup_outcome_priors(
+            task,
+            datasets=selected_datasets,
+        )
+        setup_recommendation_outcome_priors = self.collect_setup_recommendation_outcome_priors(
+            task,
+            datasets=selected_datasets,
+        )
         retrieval_context = self.retrieve_context(
             task,
             query=query,
@@ -224,6 +233,8 @@ class DecisionKnowledgeService:
             ranked_documents=retrieval_context["ranked_documents"],
             validation_summary=retrieval_context["validation_summary"],
             guidance_priors=guidance_priors,
+            setup_outcome_priors=setup_outcome_priors,
+            setup_recommendation_outcome_priors=setup_recommendation_outcome_priors,
         )
 
     def build_context(
@@ -236,6 +247,8 @@ class DecisionKnowledgeService:
         ranked_documents: list[dict[str, Any]],
         validation_summary: dict[str, Any],
         guidance_priors: dict[str, Any],
+        setup_outcome_priors: dict[str, Any],
+        setup_recommendation_outcome_priors: dict[str, Any],
     ) -> dict[str, Any]:
         """Build an agent-friendly context payload from retrieved decision records."""
         serialized_documents = [self.serialize_document(item) for item in ranked_documents]
@@ -253,6 +266,8 @@ class DecisionKnowledgeService:
             "evidence": self.collect_evidence(serialized_documents),
             "postmortem_lessons": self.collect_postmortem_lessons(serialized_documents),
             "guidance_priors": guidance_priors,
+            "setup_outcome_priors": setup_outcome_priors,
+            "setup_recommendation_outcome_priors": setup_recommendation_outcome_priors,
         }
 
     def serialize_document(self, ranked_document: dict[str, Any]) -> dict[str, Any]:
@@ -312,22 +327,165 @@ class DecisionKnowledgeService:
         *,
         datasets: tuple[DatasetName, ...],
     ) -> dict[str, Any]:
-        """Summarize recurring guidance usage for the current symbol as bounded priors."""
-        if not task.symbol:
-            return {
-                "datasets": list(datasets),
-                "symbol": None,
-                "total_observations": 0,
-                "top_guidance": [],
-                "recommendation_breakdown": [],
-                "top_reference_cases": [],
-                "summary": "",
-            }
-        return self.observation_analytics.summarize_guidance_priors(
+        """Summarize recurring guidance usage for the current symbol or setup."""
+        scenario_profile = self.build_scenario_profile(task)
+        default_empty = {
+            "datasets": list(datasets),
+            "symbol": None,
+            "market_regime": str(scenario_profile.get("market_regime", "")).strip().lower() or None,
+            "setup_labels": infer_setup_labels(scenario_profile),
+            "primary_setup_label": infer_primary_setup_label(scenario_profile) or None,
+            "total_observations": 0,
+            "top_guidance": [],
+            "recommendation_breakdown": [],
+            "top_reference_cases": [],
+            "summary": "",
+            "scope": "none",
+        }
+
+        symbol_priors = self.observation_analytics.summarize_guidance_priors(
             datasets=datasets,
             symbol=task.symbol,
+            scenario_profile=scenario_profile,
             top_n=3,
         )
+        if task.symbol and int(symbol_priors.get("total_observations", 0) or 0) == 0:
+            symbol_priors = self.observation_analytics.summarize_guidance_priors(
+                datasets=datasets,
+                symbol=task.symbol,
+                top_n=3,
+            )
+        if int(symbol_priors.get("total_observations", 0) or 0) >= 2:
+            symbol_priors["scope"] = "symbol_setup"
+            return symbol_priors
+
+        setup_priors = self.observation_analytics.summarize_guidance_priors(
+            datasets=datasets,
+            scenario_profile=scenario_profile,
+            top_n=3,
+        )
+        if int(setup_priors.get("total_observations", 0) or 0) > int(
+            symbol_priors.get("total_observations", 0) or 0
+        ):
+            setup_priors["scope"] = "setup"
+            return setup_priors
+
+        if int(symbol_priors.get("total_observations", 0) or 0) > 0:
+            symbol_priors["scope"] = "symbol_setup"
+            return symbol_priors
+
+        return default_empty
+
+    def collect_setup_outcome_priors(
+        self,
+        task: "DecisionTask",
+        *,
+        datasets: tuple[DatasetName, ...],
+    ) -> dict[str, Any]:
+        """Summarize setup-level historical outcomes for bounded reuse in decisions."""
+        scenario_profile = self.build_scenario_profile(task)
+        default_empty = {
+            "datasets": list(datasets),
+            "symbol": None,
+            "market_regime": str(scenario_profile.get("market_regime", "")).strip().lower() or None,
+            "setup_labels": infer_setup_labels(scenario_profile),
+            "primary_setup_label": infer_primary_setup_label(scenario_profile) or None,
+            "total_records": 0,
+            "reviewed_observations": 0,
+            "outcome_breakdown": [],
+            "recommendation_breakdown": [],
+            "top_setup_labels": [],
+            "dominant_outcome": None,
+            "outcome_bias": "mixed",
+            "summary": "",
+            "scope": "none",
+        }
+
+        symbol_priors = self.observation_analytics.summarize_setup_outcome_priors(
+            datasets=datasets,
+            symbol=task.symbol,
+            scenario_profile=scenario_profile,
+            top_n=3,
+        )
+        if task.symbol and int(symbol_priors.get("reviewed_observations", 0) or 0) == 0:
+            symbol_priors = self.observation_analytics.summarize_setup_outcome_priors(
+                datasets=datasets,
+                symbol=task.symbol,
+                top_n=3,
+            )
+        if int(symbol_priors.get("reviewed_observations", 0) or 0) >= 2:
+            symbol_priors["scope"] = "symbol_setup"
+            return symbol_priors
+
+        setup_priors = self.observation_analytics.summarize_setup_outcome_priors(
+            datasets=datasets,
+            scenario_profile=scenario_profile,
+            top_n=3,
+        )
+        if int(setup_priors.get("reviewed_observations", 0) or 0) > int(
+            symbol_priors.get("reviewed_observations", 0) or 0
+        ):
+            setup_priors["scope"] = "setup"
+            return setup_priors
+
+        if int(symbol_priors.get("reviewed_observations", 0) or 0) > 0:
+            symbol_priors["scope"] = "symbol_setup"
+            return symbol_priors
+
+        return default_empty
+
+    def collect_setup_recommendation_outcome_priors(
+        self,
+        task: "DecisionTask",
+        *,
+        datasets: tuple[DatasetName, ...],
+    ) -> dict[str, Any]:
+        """Summarize recommendation-to-outcome patterns for the current setup."""
+        scenario_profile = self.build_scenario_profile(task)
+        default_empty = {
+            "datasets": list(datasets),
+            "symbol": None,
+            "market_regime": str(scenario_profile.get("market_regime", "")).strip().lower() or None,
+            "setup_labels": infer_setup_labels(scenario_profile),
+            "primary_setup_label": infer_primary_setup_label(scenario_profile) or None,
+            "total_records": 0,
+            "recommendation_outcomes": [],
+            "summary": "",
+            "scope": "none",
+        }
+
+        symbol_priors = self.observation_analytics.summarize_setup_recommendation_outcomes(
+            datasets=datasets,
+            symbol=task.symbol,
+            scenario_profile=scenario_profile,
+            top_n=5,
+        )
+        if task.symbol and int(symbol_priors.get("total_records", 0) or 0) == 0:
+            symbol_priors = self.observation_analytics.summarize_setup_recommendation_outcomes(
+                datasets=datasets,
+                symbol=task.symbol,
+                top_n=5,
+            )
+        if int(symbol_priors.get("total_records", 0) or 0) >= 2:
+            symbol_priors["scope"] = "symbol_setup"
+            return symbol_priors
+
+        setup_priors = self.observation_analytics.summarize_setup_recommendation_outcomes(
+            datasets=datasets,
+            scenario_profile=scenario_profile,
+            top_n=5,
+        )
+        if int(setup_priors.get("total_records", 0) or 0) > int(
+            symbol_priors.get("total_records", 0) or 0
+        ):
+            setup_priors["scope"] = "setup"
+            return setup_priors
+
+        if int(symbol_priors.get("total_records", 0) or 0) > 0:
+            symbol_priors["scope"] = "symbol_setup"
+            return symbol_priors
+
+        return default_empty
 
     def build_excerpt(self, text: str, *, limit: int = 280) -> str:
         """Return a compact evidence excerpt suitable for prompts."""
@@ -513,6 +671,12 @@ class DecisionKnowledgeService:
             )
             structured_overlap_count += len(portfolio_state_overlap)
 
+        setup_label_overlap = self._setup_label_overlap(scenario_profile, metadata)
+        if setup_label_overlap:
+            score += 3.0 * len(setup_label_overlap)
+            match_reasons.append(f"shared setup labels: {', '.join(setup_label_overlap)}")
+            structured_overlap_count += len(setup_label_overlap)
+
         source_type = str(metadata.get("source_type", "")).strip().lower()
         if source_type == "internal":
             score += 0.5
@@ -650,6 +814,28 @@ class DecisionKnowledgeService:
             return 0.75
         return 0.0
 
+    def _setup_label_overlap(
+        self,
+        scenario_profile: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> list[str]:
+        """Return overlapping setup labels between the current setup and record metadata."""
+        target_setup_labels = infer_setup_labels(scenario_profile)
+        metadata_setup_labels = self._metadata_list(metadata, "setup_labels")
+        primary_setup_label = str(metadata.get("primary_setup_label", "")).strip().lower()
+        if primary_setup_label and primary_setup_label not in metadata_setup_labels:
+            metadata_setup_labels.append(primary_setup_label)
+        metadata_setup_label_set = {
+            label.strip().lower()
+            for label in metadata_setup_labels
+            if label.strip()
+        }
+        return [
+            label
+            for label in target_setup_labels
+            if label.strip().lower() in metadata_setup_label_set
+        ]
+
     def _metadata_overlap(
         self,
         target_tags: list[str],
@@ -666,6 +852,15 @@ class DecisionKnowledgeService:
                     str(item).strip().lower() for item in raw_value if str(item).strip()
                 )
         return [tag for tag in target_tags if tag.lower() in metadata_tags]
+
+    def _metadata_list(self, metadata: dict[str, Any], field_name: str) -> list[str]:
+        """Normalize one metadata field into a lowercase string list."""
+        raw_value = metadata.get(field_name, [])
+        if isinstance(raw_value, list):
+            return [str(item).strip().lower() for item in raw_value if str(item).strip()]
+        if isinstance(raw_value, str) and raw_value.strip():
+            return [raw_value.strip().lower()]
+        return []
 
     def _score_to_fit(
         self,
