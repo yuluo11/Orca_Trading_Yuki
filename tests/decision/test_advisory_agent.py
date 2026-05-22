@@ -34,6 +34,20 @@ class FakeDecisionKnowledgeService:
                 "top_reference_cases": [],
                 "summary": "",
             },
+            "setup_outcome_priors": {
+                "symbol": task.symbol,
+                "reviewed_observations": 0,
+                "outcome_breakdown": [],
+                "recommendation_breakdown": [],
+                "outcome_bias": "mixed",
+                "summary": "",
+            },
+            "setup_recommendation_outcome_priors": {
+                "symbol": task.symbol,
+                "total_records": 0,
+                "recommendation_outcomes": [],
+                "summary": "",
+            },
         }
 
 
@@ -66,10 +80,16 @@ class DecisionAdvisoryAgentTests(unittest.TestCase):
         self.assertIn("validation_summary", payload["decision_memory"])
         self.assertIn("postmortem_lessons", payload["decision_memory"])
         self.assertIn("guidance_priors", payload["decision_memory"])
+        self.assertIn("setup_outcome_priors", payload["decision_memory"])
+        self.assertIn("setup_recommendation_outcome_priors", payload["decision_memory"])
+        self.assertIn("current_setup_labels", payload["decision_memory"])
         self.assertIn("portfolio_context_summary", payload["instructions"])
         self.assertIn("postmortem lessons", payload["instructions"])
         self.assertIn("recurring guidance priors", payload["instructions"])
+        self.assertIn("setup outcome priors", payload["instructions"])
+        self.assertIn("setup recommendation outcome priors", payload["instructions"])
         self.assertIn("applied_postmortem_guidance", payload["instructions"])
+        self.assertIn("applied_setup_labels", payload["instructions"])
 
     def test_fallback_uses_portfolio_limits_and_emits_enhanced_fields(self) -> None:
         task = DecisionTask(
@@ -191,6 +211,47 @@ class DecisionAdvisoryAgentTests(unittest.TestCase):
                             ],
                             "summary": "For NVDA, recurring applied guidance has most often emphasized 'Require stronger confirmation before adding to an extended move.' (3 observations).",
                         },
+                        "setup_outcome_priors": {
+                            "symbol": task.symbol,
+                            "market_regime": "event_driven",
+                            "primary_setup_label": "event_momentum",
+                            "reviewed_observations": 3,
+                            "outcome_breakdown": [
+                                {"label": "failed", "count": 2},
+                                {"label": "worked", "count": 1},
+                            ],
+                            "recommendation_breakdown": [
+                                {"label": "keep_watch", "count": 2},
+                            ],
+                            "outcome_bias": "cautionary",
+                            "summary": "For NVDA / event_driven / event_momentum, reviewed setup outcomes have skewed cautionary.",
+                        },
+                        "setup_recommendation_outcome_priors": {
+                            "symbol": task.symbol,
+                            "market_regime": "event_driven",
+                            "primary_setup_label": "event_momentum",
+                            "total_records": 3,
+                            "recommendation_outcomes": [
+                                {
+                                    "recommendation": "keep_watch",
+                                    "total_observations": 2,
+                                    "outcome_breakdown": [
+                                        {"label": "failed", "count": 1},
+                                        {"label": "mixed", "count": 1},
+                                    ],
+                                    "dominant_outcome": "failed",
+                                    "outcome_bias": "cautionary",
+                                }
+                            ],
+                            "summary": "For NVDA / event_driven / event_momentum, keep_watch has most often led to failed outcomes.",
+                        },
+                        "scenario_profile": {
+                            "market_regime": "event_driven",
+                            "signal_tags": ["momentum"],
+                            "risk_tags": ["event_fade"],
+                            "timing_tags": ["short_term"],
+                            "portfolio_state_tags": ["existing_position"],
+                        },
                     },
                 },
             )()
@@ -209,12 +270,16 @@ class DecisionAdvisoryAgentTests(unittest.TestCase):
 
         self.assertIn("postmortem lesson", result["rationale"].lower())
         self.assertIn("recurring guidance prior", result["rationale"].lower())
+        self.assertIn("historical postmortem outcomes", result["rationale"].lower())
+        self.assertIn("historically resolved most often as failed", result["rationale"].lower())
+        self.assertIn("setup context", result["rationale"].lower())
         self.assertTrue(
             any("stronger confirmation" in item.lower() for item in result["no_action_reasons"])
             or any("stronger confirmation" in item.lower() for item in result["action_conditions"])
         )
         self.assertTrue(result["applied_postmortem_guidance"])
         self.assertIn("stronger confirmation", result["applied_postmortem_guidance"][0].lower())
+        self.assertIn("event_momentum", result["applied_setup_labels"])
 
     def test_fallback_downgrades_confidence_when_recurring_guidance_conflicts(self) -> None:
         agent = BaseDecisionAgent(
@@ -255,6 +320,20 @@ class DecisionAdvisoryAgentTests(unittest.TestCase):
                             "top_reference_cases": [],
                             "summary": "For NVDA, recurring applied guidance has most often emphasized stronger confirmation before adding.",
                         },
+                        "setup_outcome_priors": {
+                            "symbol": task.symbol,
+                            "reviewed_observations": 0,
+                            "outcome_breakdown": [],
+                            "recommendation_breakdown": [],
+                            "outcome_bias": "mixed",
+                            "summary": "",
+                        },
+                        "setup_recommendation_outcome_priors": {
+                            "symbol": task.symbol,
+                            "total_records": 0,
+                            "recommendation_outcomes": [],
+                            "summary": "",
+                        },
                     },
                 },
             )()
@@ -279,6 +358,103 @@ class DecisionAdvisoryAgentTests(unittest.TestCase):
         self.assertEqual("consider_buy", result["recommendation"])
         self.assertEqual("medium", result["confidence"])
         self.assertIn("confidence stays one step lower", result["rationale"].lower())
+
+    def test_fallback_downgrades_confidence_when_setup_outcomes_are_cautionary(self) -> None:
+        agent = BaseDecisionAgent(
+            knowledge_service=type(
+                "SetupOutcomeDecisionKnowledgeService",
+                (),
+                {
+                    "agent_name": "decision_advisory",
+                    "analyze": lambda self, task, **kwargs: {
+                        "query": task.subject,
+                        "scenario_profile": {
+                            "market_regime": "event_driven",
+                            "signal_tags": ["momentum", "news_catalyst"],
+                            "risk_tags": ["event_fade"],
+                        },
+                        "document_count": 0,
+                        "validation_summary": {
+                            "total_candidates": 0,
+                            "valid_candidates": 0,
+                            "invalid_candidates": 0,
+                            "warning_candidates": 0,
+                            "valid_warning_candidates": 0,
+                            "invalid_warning_candidates": 0,
+                            "invalid_examples": [],
+                            "warning_examples": [],
+                        },
+                        "documents": [],
+                        "evidence": [],
+                        "postmortem_lessons": [],
+                        "guidance_priors": {
+                            "symbol": task.symbol,
+                            "total_observations": 0,
+                            "top_guidance": [],
+                            "recommendation_breakdown": [],
+                            "top_reference_cases": [],
+                            "summary": "",
+                        },
+                        "setup_outcome_priors": {
+                            "symbol": task.symbol,
+                            "market_regime": "event_driven",
+                            "primary_setup_label": "event_momentum",
+                            "reviewed_observations": 3,
+                            "outcome_breakdown": [
+                                {"label": "failed", "count": 2},
+                                {"label": "mixed", "count": 1},
+                            ],
+                            "recommendation_breakdown": [
+                                {"label": "keep_watch", "count": 2},
+                            ],
+                            "outcome_bias": "cautionary",
+                            "summary": "For NVDA / event_driven / event_momentum, reviewed setup outcomes have skewed cautionary.",
+                        },
+                        "setup_recommendation_outcome_priors": {
+                            "symbol": task.symbol,
+                            "market_regime": "event_driven",
+                            "primary_setup_label": "event_momentum",
+                            "total_records": 3,
+                            "recommendation_outcomes": [
+                                {
+                                    "recommendation": "consider_buy",
+                                    "total_observations": 2,
+                                    "outcome_breakdown": [
+                                        {"label": "failed", "count": 1},
+                                        {"label": "mixed", "count": 1},
+                                    ],
+                                    "dominant_outcome": "failed",
+                                    "outcome_bias": "cautionary",
+                                }
+                            ],
+                            "summary": "For NVDA / event_driven / event_momentum, consider_buy has most often led to failed outcomes.",
+                        },
+                    },
+                },
+            )()
+        )
+        task = DecisionTask(
+            subject="NVIDIA constructive reset",
+            symbol="NVDA",
+            overall_summary="Catalyst, trend, and analyst confidence are aligned after consolidation.",
+            overall_confidence="high",
+            key_signals=["news catalyst remains active", "momentum is rebuilding"],
+            portfolio_risks=["event fade risk remains present"],
+            cross_analyst_observations=["Signals are constructive and aligned"],
+            portfolio_context={
+                "cash_pct": 16,
+                "max_single_name_pct": 10,
+                "positions": [],
+            },
+        )
+
+        result = agent.invoke(task)
+
+        self.assertEqual("consider_buy", result["recommendation"])
+        self.assertEqual("medium", result["confidence"])
+        self.assertIn("skewed cautionary", result["rationale"].lower())
+        self.assertIn("historical postmortem outcomes", result["rationale"].lower())
+        self.assertIn("consider_buy has historically resolved", result["rationale"].lower())
 
 
 if __name__ == "__main__":

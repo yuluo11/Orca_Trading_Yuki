@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from backend.src.agents.decision.base_agent import DecisionTask
+from backend.src.knowledge.ingest import KnowledgeIngestor
 from backend.src.knowledge.repository import KnowledgeRepository
 from backend.src.services.decision import DecisionGuidanceObservationService
 from backend.src.services.decision.memory import (
@@ -51,6 +52,20 @@ class FakeRetriever:
 
 
 class DecisionMemoryValidationTests(unittest.TestCase):
+    def _initialize_repository(self, repository: KnowledgeRepository) -> None:
+        repository.ensure_structure()
+        repository.save_manifest(
+            {
+                "version": "0.1.0",
+                "description": "Test manifest",
+                "datasets": {
+                    "foundation": {"raw": [], "processed": []},
+                    "dynamic": {"raw": [], "processed": []},
+                },
+                "indexes": [],
+            }
+        )
+
     def test_valid_sample_record_passes_validation(self) -> None:
         record = load_json(DATA_DIR / "sample_decision_case.json")
 
@@ -64,6 +79,7 @@ class DecisionMemoryValidationTests(unittest.TestCase):
             "portfolio_state_tags",
             validation["normalized_metadata"],
         )
+        self.assertIn("setup_labels", validation["normalized_metadata"])
 
     def test_invalid_fixture_is_rejected_with_explicit_errors(self) -> None:
         record = load_json(FIXTURES_DIR / "invalid_decision_memory_record.json")
@@ -95,6 +111,23 @@ class DecisionMemoryValidationTests(unittest.TestCase):
         )
         self.assertTrue(
             any("metadata.created_at is recommended" in warning for warning in validation["warnings"])
+        )
+
+    def test_setup_labels_are_normalized_when_present(self) -> None:
+        record = load_json(DATA_DIR / "sample_decision_case.json")
+        record["metadata"]["setup_labels"] = ["Event_Momentum", "Catalyst_Fade_Risk"]
+        record["metadata"]["primary_setup_label"] = "Event_Momentum"
+
+        validation = validate_decision_memory_record(record, allowed_datasets=("dynamic",))
+
+        self.assertTrue(validation["is_valid"])
+        self.assertEqual(
+            ["event_momentum", "catalyst_fade_risk"],
+            validation["normalized_metadata"]["setup_labels"],
+        )
+        self.assertEqual(
+            "event_momentum",
+            validation["normalized_metadata"]["primary_setup_label"],
         )
 
     def test_validation_summary_counts_invalid_and_warning_candidates(self) -> None:
@@ -365,6 +398,94 @@ class DecisionMemoryValidationTests(unittest.TestCase):
             self.assertTrue(context["guidance_priors"]["top_guidance"])
             self.assertIn("stronger confirmation", context["guidance_priors"]["summary"].lower())
 
+    def test_analyze_collects_setup_outcome_priors_for_current_setup(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            self._initialize_repository(repository)
+            ingestor = KnowledgeIngestor(repository)
+            ingestor.ingest_text(
+                "dynamic",
+                "nvda_event_setup_failed",
+                "A postmortem showing an event-driven rebound that failed after weak confirmation.",
+                metadata={
+                    "source": "internal_reflection",
+                    "source_type": "internal",
+                    "title": "NVDA Event Setup Failed",
+                    "category": "decision_memory",
+                    "memory_type": "decision_postmortem",
+                    "symbol": "NVDA",
+                    "subject": "NVIDIA momentum rebound review",
+                    "topic": "decision-memory",
+                    "recommendation": "keep_watch",
+                    "confidence": "medium",
+                    "market_regime": "event_driven",
+                    "analyst_alignment": "mixed",
+                    "setup_labels": ["event_momentum"],
+                    "primary_setup_label": "event_momentum",
+                    "signal_tags": ["momentum", "news_catalyst"],
+                    "risk_tags": ["event_fade"],
+                    "timing_tags": ["short_term"],
+                    "outcome_label": "failed",
+                    "quality_score": 0.8,
+                    "dataset": "dynamic",
+                },
+            )
+            ingestor.ingest_text(
+                "dynamic",
+                "nvda_event_setup_mixed",
+                "A second postmortem showing a similar setup with mixed follow-through.",
+                metadata={
+                    "source": "internal_reflection",
+                    "source_type": "internal",
+                    "title": "NVDA Event Setup Mixed",
+                    "category": "decision_memory",
+                    "memory_type": "decision_postmortem",
+                    "symbol": "NVDA",
+                    "subject": "NVIDIA constructive reset",
+                    "topic": "decision-memory",
+                    "recommendation": "keep_watch",
+                    "confidence": "medium",
+                    "market_regime": "event_driven",
+                    "analyst_alignment": "mixed",
+                    "setup_labels": ["event_momentum"],
+                    "primary_setup_label": "event_momentum",
+                    "signal_tags": ["momentum"],
+                    "risk_tags": ["event_fade"],
+                    "timing_tags": ["short_term"],
+                    "outcome_label": "mixed",
+                    "quality_score": 0.7,
+                    "dataset": "dynamic",
+                },
+            )
+
+            service = DecisionKnowledgeService(
+                repository=repository,
+                retriever=FakeRetriever([]),
+                backend=object(),
+            )
+            task = DecisionTask(
+                subject="NVIDIA constructive reset",
+                symbol="NVDA",
+                overall_summary="Catalyst and trend are constructive after consolidation.",
+                overall_confidence="high",
+                key_signals=["news catalyst remains active", "momentum is rebuilding"],
+                portfolio_risks=["event fade risk remains present"],
+                cross_analyst_observations=["Signals are constructive and aligned"],
+            )
+
+            context = service.analyze(task)
+
+            self.assertEqual("event_momentum", context["setup_outcome_priors"]["primary_setup_label"])
+            self.assertEqual(2, context["setup_outcome_priors"]["reviewed_observations"])
+            self.assertEqual("cautionary", context["setup_outcome_priors"]["outcome_bias"])
+            self.assertEqual("symbol_setup", context["setup_outcome_priors"]["scope"])
+            self.assertEqual(
+                "keep_watch",
+                context["setup_recommendation_outcome_priors"]["recommendation_outcomes"][0][
+                    "recommendation"
+                ],
+            )
+
     def test_guidance_priors_lightly_boost_aligned_documents_in_retrieval(self) -> None:
         with TemporaryDirectory() as tmpdir:
             repository = KnowledgeRepository(data_root=Path(tmpdir))
@@ -495,6 +616,177 @@ class DecisionMemoryValidationTests(unittest.TestCase):
                 "aligned with recurring guidance priors for this symbol",
                 context["documents"][0]["match_reasons"],
             )
+
+    def test_guidance_priors_can_fall_back_to_setup_scope_when_symbol_history_is_sparse(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            observation_service = DecisionGuidanceObservationService(repository=repository)
+            observation_service.persist_guidance_observation(
+                {
+                    "subject": "NVIDIA momentum rebound review",
+                    "symbol": "NVDA",
+                    "trade_date": "2026-05-19",
+                    "decision_summary": "Watch the rebound until confirmation improves.",
+                    "recommendation": "keep_watch",
+                    "confidence": "medium",
+                    "rationale": "A prior postmortem argued for stronger confirmation.",
+                    "case_fit_assessment": "Partial fit to a failed rebound lesson.",
+                    "reference_cases": [{"title": "Momentum Rebound Postmortem"}],
+                    "applied_postmortem_guidance": [
+                        "Require stronger confirmation before adding to an extended move."
+                    ],
+                    "decision_context": {
+                        "scenario_profile": {
+                            "market_regime": "event_driven",
+                            "signal_tags": ["momentum"],
+                            "risk_tags": ["event_fade"],
+                            "timing_tags": ["short_term"],
+                        }
+                    },
+                }
+            )
+            observation_service.persist_guidance_observation(
+                {
+                    "subject": "Software catalyst follow-up",
+                    "symbol": "MSFT",
+                    "trade_date": "2026-05-20",
+                    "decision_summary": "Stay patient until confirmation improves.",
+                    "recommendation": "keep_watch",
+                    "confidence": "medium",
+                    "rationale": "The same event-driven lesson remains active.",
+                    "case_fit_assessment": "Similar catalyst and fade risk.",
+                    "reference_cases": [{"title": "Catalyst Fade Postmortem"}],
+                    "applied_postmortem_guidance": [
+                        "Require stronger confirmation before adding to an extended move."
+                    ],
+                    "decision_context": {
+                        "scenario_profile": {
+                            "market_regime": "event_driven",
+                            "signal_tags": ["momentum"],
+                            "risk_tags": ["event_fade"],
+                            "timing_tags": ["short_term"],
+                        }
+                    },
+                }
+            )
+
+            service = DecisionKnowledgeService(repository=repository, retriever=FakeRetriever([]), backend=object())
+            task = DecisionTask(
+                subject="AMD momentum rebound review",
+                symbol="AMD",
+                overall_summary="Catalyst stayed active but the rebound looked fragile.",
+                overall_confidence="medium",
+                key_signals=["momentum is still active"],
+                portfolio_risks=["event fade risk is rising"],
+                cross_analyst_observations=["Signals are constructive but timing looks stretched"],
+                portfolio_context={
+                    "cash_pct": 9,
+                    "positions": [],
+                },
+            )
+
+            priors = service.collect_guidance_priors(task, datasets=("dynamic",))
+
+            self.assertEqual("setup", priors["scope"])
+            self.assertIsNone(priors["symbol"])
+            self.assertEqual("event_driven", priors["market_regime"])
+            self.assertEqual("event_momentum", priors["primary_setup_label"])
+            self.assertEqual(2, priors["total_observations"])
+            self.assertIn("event_driven", priors["summary"])
+
+    def test_setup_labels_explicitly_influence_retrieval_ranking(self) -> None:
+        shared_text = (
+            "A prior decision reviewed an event-driven semiconductor setup that required "
+            "measured sizing and stronger confirmation."
+        )
+        event_momentum_record = {
+            "text": shared_text,
+            "metadata": {
+                "source": "internal_decision_log",
+                "source_type": "internal",
+                "title": "Event Momentum Setup Case",
+                "created_at": "2026-05-18T10:00:00+08:00",
+                "updated_at": "2026-05-18T10:00:00+08:00",
+                "category": "decision_memory",
+                "memory_type": "decision_case",
+                "tags": ["semiconductors"],
+                "setup_labels": ["event_momentum"],
+                "primary_setup_label": "event_momentum",
+                "symbol": "NVDA",
+                "subject": "NVIDIA event-driven rally watch",
+                "topic": "decision-memory",
+                "recommendation": "keep_watch",
+                "confidence": "medium",
+                "market_regime": "event_driven",
+                "analyst_alignment": "mixed",
+                "signal_tags": ["news_catalyst"],
+                "risk_tags": ["event_fade"],
+                "timing_tags": ["short_term"],
+                "portfolio_state_tags": ["no_position", "ample_cash"],
+                "outcome_label": "worked",
+                "quality_score": 0.8,
+                "dataset": "dynamic",
+            },
+        }
+        defensive_record = {
+            "text": shared_text,
+            "metadata": {
+                "source": "internal_decision_log",
+                "source_type": "internal",
+                "title": "Defensive Drawdown Setup Case",
+                "created_at": "2026-05-17T10:00:00+08:00",
+                "updated_at": "2026-05-17T10:00:00+08:00",
+                "category": "decision_memory",
+                "memory_type": "decision_case",
+                "tags": ["semiconductors"],
+                "setup_labels": ["defensive_drawdown"],
+                "primary_setup_label": "defensive_drawdown",
+                "symbol": "NVDA",
+                "subject": "NVIDIA event-driven rally watch",
+                "topic": "decision-memory",
+                "recommendation": "keep_watch",
+                "confidence": "medium",
+                "market_regime": "event_driven",
+                "analyst_alignment": "mixed",
+                "signal_tags": ["news_catalyst"],
+                "risk_tags": ["event_fade"],
+                "timing_tags": ["short_term"],
+                "portfolio_state_tags": ["no_position", "ample_cash"],
+                "outcome_label": "worked",
+                "quality_score": 0.8,
+                "dataset": "dynamic",
+            },
+        }
+
+        retriever = FakeRetriever(
+            [
+                FakeDocument(defensive_record["text"], defensive_record["metadata"]),
+                FakeDocument(event_momentum_record["text"], event_momentum_record["metadata"]),
+            ]
+        )
+        service = DecisionKnowledgeService(retriever=retriever, backend=object())
+        task = DecisionTask(
+            subject="NVIDIA event-driven rally watch",
+            symbol="NVDA",
+            overall_summary="Catalyst remained active but timing looked stretched.",
+            overall_confidence="medium",
+            key_signals=["news catalyst remains active"],
+            portfolio_risks=["event fade risk is rising"],
+            cross_analyst_observations=["Signals are constructive but timing looks stretched"],
+            portfolio_context={
+                "cash_pct": 16,
+                "max_single_name_pct": 10,
+                "positions": [],
+            },
+        )
+
+        context = service.analyze(task)
+
+        self.assertEqual("Event Momentum Setup Case", context["documents"][0]["title"])
+        self.assertIn(
+            "shared setup labels: event_momentum",
+            " ".join(context["documents"][0]["match_reasons"]),
+        )
 
 
 if __name__ == "__main__":

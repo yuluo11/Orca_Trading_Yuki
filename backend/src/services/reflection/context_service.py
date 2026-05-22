@@ -99,8 +99,9 @@ class ReflectionContextService:
     def build_reflection_profile(self, task: "ReflectionTask") -> dict[str, Any]:
         """Derive a compact postmortem profile from the current task."""
         decision_output = task.decision_output or {}
-        decision_context = decision_output.get("decision_context", {})
-        scenario_profile = decision_context.get("scenario_profile", {})
+        scenario_profile = self._extract_decision_scenario_profile(task.decision_output)
+        if not scenario_profile:
+            scenario_profile = self._infer_scenario_profile_from_task(task)
         return {
             "symbol": task.symbol,
             "recommendation": str(decision_output.get("recommendation", "")).strip().lower(),
@@ -113,10 +114,12 @@ class ReflectionContextService:
                 feedback_notes=task.feedback_notes,
             ),
             "market_regime": str(
-                scenario_profile.get("market_regime")
-                or decision_output.get("market_regime")
-                or "mixed"
+                scenario_profile.get("market_regime") or decision_output.get("market_regime") or "mixed"
             ).strip().lower(),
+            "analyst_alignment": str(scenario_profile.get("analyst_alignment") or "mixed").strip().lower(),
+            "signal_tags": list(scenario_profile.get("signal_tags", [])),
+            "risk_tags": list(scenario_profile.get("risk_tags", [])),
+            "timing_tags": list(scenario_profile.get("timing_tags", [])),
             "portfolio_state_tags": self._infer_portfolio_state_tags(task.portfolio_context, task.symbol),
             "decision_quality_hint": self._infer_decision_quality_hint(task),
             "exit_reason": str((task.exit_context or {}).get("exit_reason", "")).strip().lower(),
@@ -135,10 +138,10 @@ class ReflectionContextService:
         """Retrieve and rank historical decision-memory records for reflection."""
         scenario_profile = {
             "market_regime": reflection_profile.get("market_regime", "mixed"),
-            "analyst_alignment": "mixed",
-            "signal_tags": [],
-            "risk_tags": [],
-            "timing_tags": [],
+            "analyst_alignment": reflection_profile.get("analyst_alignment", "mixed"),
+            "signal_tags": list(reflection_profile.get("signal_tags", [])),
+            "risk_tags": list(reflection_profile.get("risk_tags", [])),
+            "timing_tags": list(reflection_profile.get("timing_tags", [])),
             "portfolio_state_tags": list(reflection_profile.get("portfolio_state_tags", [])),
         }
         return self.decision_service.retrieve_context(
@@ -317,6 +320,9 @@ class ReflectionContextService:
         future_adjustments: list[str],
     ) -> dict[str, Any]:
         """Build a candidate postmortem memory record from the current reflection task."""
+        scenario_profile = self._extract_decision_scenario_profile(task.decision_output)
+        if not scenario_profile:
+            scenario_profile = self._infer_scenario_profile_from_task(task)
         return build_candidate_postmortem_record(
             subject=task.subject,
             symbol=task.symbol,
@@ -341,8 +347,99 @@ class ReflectionContextService:
             outcome_metrics=task.outcome_metrics,
             exit_context=task.exit_context,
             post_trade_notes=self._join_text_fields(task.post_trade_notes, task.feedback_notes),
+            scenario_profile=scenario_profile,
             dataset=str((task.datasets or self.default_datasets)[0]),
         )
+
+    def _extract_decision_scenario_profile(
+        self,
+        decision_output: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Extract the decision scenario profile when it is available on the decision output."""
+        if not isinstance(decision_output, dict):
+            return {}
+        decision_context = decision_output.get("decision_context")
+        if isinstance(decision_context, dict):
+            scenario_profile = decision_context.get("scenario_profile")
+            if isinstance(scenario_profile, dict):
+                return scenario_profile
+        scenario_profile = decision_output.get("scenario_profile")
+        if isinstance(scenario_profile, dict):
+            return scenario_profile
+        return {}
+
+    def _infer_scenario_profile_from_task(self, task: "ReflectionTask") -> dict[str, Any]:
+        """Infer a lightweight scenario profile from analyst payload when needed."""
+        analyst_payload = dict(task.analyst_payload or {})
+        signal_texts = [
+            str(item).strip()
+            for item in analyst_payload.get("key_signals", [])
+            if str(item).strip()
+        ]
+        risk_texts = [
+            str(item).strip()
+            for item in analyst_payload.get("portfolio_risks", [])
+            if str(item).strip()
+        ]
+        combined_text = " ".join(
+            part
+            for part in (
+                task.subject,
+                task.extra_context or "",
+                str(analyst_payload.get("overall_summary", "")).strip(),
+                " ".join(
+                    str(item).strip()
+                    for item in analyst_payload.get("cross_analyst_observations", [])
+                    if str(item).strip()
+                ),
+            )
+            if part
+        )
+        return {
+            "market_regime": self.decision_service._infer_market_regime(combined_text),
+            "analyst_alignment": self.decision_service._infer_analyst_alignment(
+                type(
+                    "ReflectionAlignmentTask",
+                    (),
+                    {
+                        "cross_analyst_observations": analyst_payload.get(
+                            "cross_analyst_observations", []
+                        ),
+                        "overall_confidence": analyst_payload.get("overall_confidence", "low"),
+                    },
+                )()
+            ),
+            "signal_tags": self.decision_service._extract_tags(
+                signal_texts,
+                tag_map={
+                    "news_catalyst": ("guidance", "catalyst", "news", "headline"),
+                    "sentiment_spike": ("sentiment", "hype", "attention", "buzz", "social"),
+                    "momentum": ("momentum", "breakout", "trend", "acceleration"),
+                    "ai_theme": ("ai", "artificial intelligence", "infrastructure"),
+                    "price_extension": ("extended", "extension", "overbought", "high"),
+                },
+            ),
+            "risk_tags": self.decision_service._extract_tags(
+                risk_texts,
+                tag_map={
+                    "crowded_trade": ("crowded", "overowned", "consensus", "crowded trade"),
+                    "event_fade": ("event fade", "fade", "post catalyst", "post-catalyst"),
+                    "valuation_risk": ("valuation", "expensive", "multiple", "rich"),
+                    "execution_risk": ("execution", "delivery", "miss"),
+                    "drawdown_risk": ("drawdown", "reversal", "pullback", "volatility"),
+                },
+            ),
+            "timing_tags": self.decision_service._extract_tags(
+                [combined_text],
+                tag_map={
+                    "short_term": ("short-term", "near-term"),
+                    "event_window": ("event", "earnings", "guidance", "catalyst"),
+                    "near_local_high": ("high", "extended", "peak"),
+                    "post_gap_up": ("gap", "gap-up"),
+                },
+            ),
+            "portfolio_state_tags": self._infer_portfolio_state_tags(task.portfolio_context, task.symbol),
+        }
 
     def _build_analyst_summary(self, analyst_payload: dict[str, Any] | None) -> dict[str, Any]:
         """Reduce the full analyst payload into a compact reflection block."""

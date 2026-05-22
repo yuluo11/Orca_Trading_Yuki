@@ -105,6 +105,23 @@ class ReflectionContextServiceTests(unittest.TestCase):
         self.assertIn("realized_pnl_pct", context["realized_outcome"]["summary"])
         self.assertTrue(context["query"])
 
+        candidate_memory = service.build_candidate_memory(
+            task,
+            reflection_summary="Timing caution helped, but rebound persistence was still underweighted.",
+            what_worked=["Timing caution avoided a worse chase."],
+            what_failed_or_underweighted=["Rebound persistence was still underweighted."],
+            lessons=["Require stronger confirmation before adding to event-driven momentum."],
+            future_adjustments=["Compare future rebounds against this event-momentum setup."],
+        )
+        self.assertEqual(
+            "event_momentum",
+            candidate_memory["metadata"]["primary_setup_label"],
+        )
+        self.assertIn(
+            "event_momentum",
+            candidate_memory["metadata"]["setup_labels"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
