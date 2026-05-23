@@ -69,3 +69,5 @@ class DecisionContext(TypedDict, total=False):
     evidence: list[KnowledgeEvidenceItem]
     postmortem_lessons: list[dict[str, str]]
     guidance_priors: GuidancePriorsSummary
+    setup_outcome_priors: dict[str, Any]
+    setup_recommendation_outcome_priors: dict[str, Any]

@@ -90,6 +90,14 @@ class FakeReflectionContextService:
             outcome_metrics=task.outcome_metrics,
             exit_context=task.exit_context,
             post_trade_notes=task.post_trade_notes,
+            scenario_profile={
+                "market_regime": "event_driven",
+                "analyst_alignment": "mixed",
+                "signal_tags": ["momentum"],
+                "risk_tags": ["event_fade"],
+                "timing_tags": ["short_term"],
+                "portfolio_state_tags": ["existing_position"],
+            },
         )
 
 
@@ -181,6 +189,14 @@ class ReflectionAgentTests(unittest.TestCase):
             allowed_datasets=("dynamic",),
         )
         self.assertTrue(validation["is_valid"])
+        self.assertEqual(
+            "event_momentum",
+            result["candidate_memory"]["metadata"]["primary_setup_label"],
+        )
+        self.assertIn(
+            "event_momentum",
+            result["candidate_memory"]["metadata"]["setup_labels"],
+        )
 
 
 if __name__ == "__main__":

@@ -498,6 +498,7 @@ def run_decision_advisory(
     datasets: tuple[DatasetName, ...] | None = None,
     metadata_filter: dict[str, Any] | None = None,
     max_documents: int | None = None,
+    repository: KnowledgeRepository | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> DecisionOutput:
@@ -509,7 +510,11 @@ def run_decision_advisory(
         metadata_filter=metadata_filter,
         max_documents=max_documents,
     )
-    agent = build_decision_advisory_agent(llm_client=llm_client, llm=llm)
+    agent = build_decision_advisory_agent(
+        repository=repository,
+        llm_client=llm_client,
+        llm=llm,
+    )
     return agent.invoke(task)
 
 
@@ -527,6 +532,7 @@ def run_reflection(
     datasets: tuple[DatasetName, ...] | None = None,
     metadata_filter: dict[str, Any] | None = None,
     max_documents: int | None = None,
+    repository: KnowledgeRepository | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> ReflectionOutput:
@@ -545,7 +551,11 @@ def run_reflection(
         metadata_filter=metadata_filter,
         max_documents=max_documents,
     )
-    agent = build_reflection_agent(llm_client=llm_client, llm=llm)
+    agent = build_reflection_agent(
+        repository=repository,
+        llm_client=llm_client,
+        llm=llm,
+    )
     return agent.invoke(task)
 
 
@@ -604,6 +614,7 @@ def summarize_decision_guidance_priors(
     datasets: tuple[DatasetName, ...] | list[DatasetName] | None = None,
     symbol: str | None = None,
     recommendation: str | None = None,
+    scenario_profile: dict[str, Any] | None = None,
     top_n: int = 3,
     repository: KnowledgeRepository | None = None,
 ) -> GuidancePriorsSummary:
@@ -613,6 +624,43 @@ def summarize_decision_guidance_priors(
         datasets=datasets,
         symbol=symbol,
         recommendation=recommendation,
+        scenario_profile=scenario_profile,
+        top_n=top_n,
+    )
+
+
+def summarize_decision_setup_outcomes(
+    *,
+    datasets: tuple[DatasetName, ...] | list[DatasetName] | None = None,
+    symbol: str | None = None,
+    scenario_profile: dict[str, Any] | None = None,
+    top_n: int = 3,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Summarize setup-level historical outcomes from persisted decision memories."""
+    service = build_decision_guidance_observation_analytics_service(repository=repository)
+    return service.summarize_setup_outcome_priors(
+        datasets=datasets,
+        symbol=symbol,
+        scenario_profile=scenario_profile,
+        top_n=top_n,
+    )
+
+
+def summarize_decision_setup_recommendation_outcomes(
+    *,
+    datasets: tuple[DatasetName, ...] | list[DatasetName] | None = None,
+    symbol: str | None = None,
+    scenario_profile: dict[str, Any] | None = None,
+    top_n: int = 5,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Summarize historical recommendation-to-outcome patterns for one setup."""
+    service = build_decision_guidance_observation_analytics_service(repository=repository)
+    return service.summarize_setup_recommendation_outcomes(
+        datasets=datasets,
+        symbol=symbol,
+        scenario_profile=scenario_profile,
         top_n=top_n,
     )
 
@@ -651,6 +699,7 @@ def run_reflection_and_persist(
         datasets=datasets,
         metadata_filter=metadata_filter,
         max_documents=max_documents,
+        repository=repository,
         llm_client=llm_client,
         llm=llm,
     )
@@ -679,6 +728,7 @@ def run_decision_realization(
     decision_datasets: tuple[DatasetName, ...] | None = None,
     decision_metadata_filter: dict[str, Any] | None = None,
     decision_max_documents: int | None = None,
+    repository: KnowledgeRepository | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
 ) -> DecisionRealizationResult:
@@ -700,6 +750,7 @@ def run_decision_realization(
         datasets=decision_datasets,
         metadata_filter=decision_metadata_filter,
         max_documents=decision_max_documents,
+        repository=repository,
         llm_client=llm_client,
         llm=llm,
     )

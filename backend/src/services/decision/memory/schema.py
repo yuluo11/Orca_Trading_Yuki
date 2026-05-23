@@ -44,6 +44,8 @@ OPTIONAL_METADATA_FIELDS = (
     "symbol",
     "topic",
     "tags",
+    "setup_labels",
+    "primary_setup_label",
     "signal_tags",
     "risk_tags",
     "timing_tags",
@@ -58,6 +60,7 @@ OPTIONAL_METADATA_FIELDS = (
 
 LIST_METADATA_FIELDS = (
     "tags",
+    "setup_labels",
     "signal_tags",
     "risk_tags",
     "timing_tags",
@@ -118,6 +121,11 @@ def normalize_decision_memory_metadata(
         default="mixed",
     ).lower()
     normalized["tags"] = _normalize_string_list(normalized.get("tags"))
+    normalized["setup_labels"] = _normalize_string_list(normalized.get("setup_labels"))
+    normalized["primary_setup_label"] = _normalize_string(
+        normalized.get("primary_setup_label"),
+        default="",
+    ).lower()
     normalized["signal_tags"] = _normalize_string_list(normalized.get("signal_tags"))
     normalized["risk_tags"] = _normalize_string_list(normalized.get("risk_tags"))
     normalized["timing_tags"] = _normalize_string_list(normalized.get("timing_tags"))
@@ -146,6 +154,8 @@ def decision_memory_record_template() -> DecisionMemoryRecord:
             "category": "decision_memory",
             "memory_type": "decision_case",
             "tags": ["theme", "setup", "broad-context"],
+            "setup_labels": ["event_momentum"],
+            "primary_setup_label": "event_momentum",
             "symbol": "TICKER",
             "subject": "Concise scenario label",
             "topic": "decision-memory",

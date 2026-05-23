@@ -6,6 +6,7 @@ from typing import Any
 
 from ...models import DecisionMemoryRecord
 from ..decision.memory import validate_decision_memory_record
+from ..decision.setup_taxonomy import infer_primary_setup_label, infer_setup_labels
 
 ALLOWED_CONFIDENCE_CHANGES = {"increase", "keep", "decrease"}
 ALLOWED_OUTCOME_LABELS = {"worked", "failed", "mixed", "unknown"}
@@ -190,6 +191,7 @@ def build_candidate_postmortem_record(
     outcome_metrics: dict[str, Any] | None = None,
     exit_context: dict[str, Any] | None = None,
     post_trade_notes: str | None = None,
+    scenario_profile: dict[str, Any] | None = None,
     dataset: str = "dynamic",
 ) -> DecisionMemoryRecord:
     """Build a candidate decision-memory postmortem record from reflection output."""
@@ -213,6 +215,8 @@ def build_candidate_postmortem_record(
     ]
     text = "\n\n".join(section for section in text_sections if section).strip()
 
+    setup_labels = infer_setup_labels(scenario_profile)
+    primary_setup_label = infer_primary_setup_label(scenario_profile)
     record = {
         "text": text,
         "metadata": {
@@ -224,17 +228,27 @@ def build_candidate_postmortem_record(
             "category": "decision_memory",
             "memory_type": "decision_postmortem",
             "tags": _normalize_tags([symbol, "postmortem", normalized_outcome]),
+            "setup_labels": setup_labels,
+            "primary_setup_label": primary_setup_label,
             "symbol": (symbol or "").strip().upper(),
             "subject": title_subject,
             "topic": "decision-memory",
             "recommendation": str(recommendation or "keep_watch").strip().lower() or "keep_watch",
             "confidence": str(confidence or "medium").strip().lower() or "medium",
-            "market_regime": "mixed",
-            "analyst_alignment": "mixed",
-            "signal_tags": [],
-            "risk_tags": [],
-            "timing_tags": [],
-            "portfolio_state_tags": [],
+            "market_regime": _normalize_text(
+                (scenario_profile or {}).get("market_regime")
+            ).lower()
+            or "mixed",
+            "analyst_alignment": _normalize_text(
+                (scenario_profile or {}).get("analyst_alignment")
+            ).lower()
+            or "mixed",
+            "signal_tags": _normalize_tags((scenario_profile or {}).get("signal_tags", [])),
+            "risk_tags": _normalize_tags((scenario_profile or {}).get("risk_tags", [])),
+            "timing_tags": _normalize_tags((scenario_profile or {}).get("timing_tags", [])),
+            "portfolio_state_tags": _normalize_tags(
+                (scenario_profile or {}).get("portfolio_state_tags", [])
+            ),
             "outcome_label": normalized_outcome,
             "quality_score": 0.7,
             "dataset": dataset,

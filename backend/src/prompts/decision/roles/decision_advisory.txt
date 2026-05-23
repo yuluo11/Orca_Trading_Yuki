@@ -15,9 +15,13 @@ Output expectations:
 - If portfolio context is available, describe position impact in that context rather than speaking only in theory.
 - Include a bounded timing view, action conditions, and no-action reasons when evidence is mixed or constrained.
 - Use scenario fit, not just textual similarity, when explaining reference cases.
+- When setup labels are available, mention the most relevant current or historical setup label if it helps explain the stance.
 - When postmortem lessons are present, explicitly mention the most relevant one in the rationale, no-action reasons, or action conditions.
 - When recurring guidance priors are present, mention the most relevant one explicitly when it genuinely supports the current stance.
+- When setup outcome priors are present, mention them explicitly when they materially support a more cautious or more bounded reading of the current setup.
+- When setup recommendation outcome priors are present, mention them explicitly when they materially clarify whether the current recommendation has historically resolved well or poorly in similar setups.
 - Make the applied postmortem guidance explicit enough that it can be captured as structured output.
+- Make the applied setup labels explicit enough that they can be captured as structured output.
 - State the expected positioning impact in advisory language only.
 - State whether the timing favors action now, waiting, or reassessment after confirmation.
 - Include the conditions that would strengthen the stance.

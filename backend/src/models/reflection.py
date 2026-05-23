@@ -26,6 +26,10 @@ class ReflectionProfile(TypedDict, total=False):
     decision_confidence: str
     outcome_label: str
     market_regime: str
+    analyst_alignment: str
+    signal_tags: list[str]
+    risk_tags: list[str]
+    timing_tags: list[str]
     portfolio_state_tags: list[str]
     decision_quality_hint: str
     exit_reason: str

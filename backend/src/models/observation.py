@@ -25,7 +25,17 @@ class DecisionGuidanceObservationMetadata(TypedDict, total=False):
     confidence: str
     applied_guidance: list[str]
     applied_guidance_count: int
+    applied_setup_labels: list[str]
+    applied_setup_label_count: int
     reference_case_titles: list[str]
+    market_regime: str
+    analyst_alignment: str
+    signal_tags: list[str]
+    risk_tags: list[str]
+    timing_tags: list[str]
+    portfolio_state_tags: list[str]
+    setup_labels: list[str]
+    primary_setup_label: str
     dataset: str
 
 
@@ -57,6 +67,8 @@ class GuidanceObservationSummary(TypedDict, total=False):
     recommendation_breakdown: list[CountedLabel]
     symbol_breakdown: list[CountedLabel]
     top_reference_cases: list[CountedLabel]
+    top_setup_labels: list[CountedLabel]
+    top_applied_setup_labels: list[CountedLabel]
 
 
 class GuidancePriorsSummary(TypedDict, total=False):
@@ -64,9 +76,15 @@ class GuidancePriorsSummary(TypedDict, total=False):
 
     datasets: list[str]
     symbol: str | None
+    market_regime: str | None
+    setup_labels: list[str]
+    primary_setup_label: str | None
     recommendation_filter: str | None
     total_observations: int
     top_guidance: list[CountedLabel]
     recommendation_breakdown: list[CountedLabel]
     top_reference_cases: list[CountedLabel]
+    top_setup_labels: list[CountedLabel]
+    top_applied_setup_labels: list[CountedLabel]
     summary: str
+    scope: str
