@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...llm.client import LLMClient
+from ...models.analyst import AnalystOrchestrationResult, AnalystResult
 from .base_agent import AnalystTask, BaseLangGraphAnalystAgent
 
 
@@ -32,9 +33,9 @@ class AnalystOrchestrator:
     llm_client: LLMClient | None = None
     prompts_dir: Path | None = None
 
-    def run(self, task: AnalystTask) -> dict[str, Any]:
+    def run(self, task: AnalystTask) -> AnalystOrchestrationResult:
         """Execute each analyst in sequence and return an aggregated result."""
-        analyst_results: list[dict[str, Any]] = []
+        analyst_results: list[AnalystResult] = []
         messages: list[Any] = list(task.messages)
 
         for analyst_name in self.sequence:
@@ -61,7 +62,7 @@ class AnalystOrchestrator:
         *,
         analyst_results: list[dict[str, Any]],
         messages: list[Any],
-    ) -> dict[str, Any]:
+    ) -> AnalystOrchestrationResult:
         """Aggregate analyst outputs into a single orchestration payload."""
         fallback_key_signals = _dedupe_preserve_order(
             [signal for result in analyst_results for signal in result.get("signals", [])]

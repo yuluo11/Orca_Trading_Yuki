@@ -7,6 +7,16 @@ from typing import TYPE_CHECKING, Any
 from ...knowledge.indexing import KnowledgeIndexer
 from ...knowledge.repository import DatasetName, KnowledgeRepository
 from ...knowledge.retriever import KnowledgeRetriever, VectorRetrieverBackend
+from ...models import (
+    CandidateMemorySeed,
+    DecisionMemoryRecord,
+    PostTradeCompletenessResult,
+    PostTradeValidationResult,
+    RealizedOutcomeSummary,
+    ReflectionAnalystSummary,
+    ReflectionContext,
+    ReflectionProfile,
+)
 from ..decision.memory import DecisionKnowledgeService
 from .schema import (
     assess_post_trade_review_completeness,
@@ -96,7 +106,7 @@ class ReflectionContextService:
 
         return " ".join(part for part in query_parts if part)
 
-    def build_reflection_profile(self, task: "ReflectionTask") -> dict[str, Any]:
+    def build_reflection_profile(self, task: "ReflectionTask") -> ReflectionProfile:
         """Derive a compact postmortem profile from the current task."""
         decision_output = task.decision_output or {}
         decision_context = decision_output.get("decision_context", {})
@@ -127,7 +137,7 @@ class ReflectionContextService:
         task: "ReflectionTask",
         *,
         query: str,
-        reflection_profile: dict[str, Any],
+        reflection_profile: ReflectionProfile,
         datasets: tuple[DatasetName, ...] | None = None,
         metadata_filter: dict[str, Any] | None = None,
         k: int | None = None,
@@ -157,7 +167,7 @@ class ReflectionContextService:
         datasets: tuple[DatasetName, ...] | None = None,
         metadata_filter: dict[str, Any] | None = None,
         k: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> ReflectionContext:
         """Return a structured reflection payload for the post-decision agent."""
         selected_datasets = datasets or self.default_datasets
         merged_filter = dict(self.default_metadata_filter())
@@ -188,11 +198,11 @@ class ReflectionContextService:
         task: "ReflectionTask",
         *,
         query: str,
-        reflection_profile: dict[str, Any],
+        reflection_profile: ReflectionProfile,
         datasets: tuple[DatasetName, ...],
         ranked_documents: list[dict[str, Any]],
         validation_summary: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> ReflectionContext:
         """Build an agent-friendly postmortem context payload."""
         serialized_documents = [
             self.decision_service.serialize_document(item)
@@ -205,20 +215,22 @@ class ReflectionContextService:
             post_trade_notes=task.post_trade_notes,
             feedback_notes=task.feedback_notes,
         )
-        post_trade_validation = validate_post_trade_review(
+        post_trade_validation: PostTradeValidationResult = validate_post_trade_review(
             execution_summary=task.execution_summary,
             outcome_metrics=task.outcome_metrics,
             exit_context=task.exit_context,
         )
-        post_trade_completeness = assess_post_trade_review_completeness(
+        post_trade_completeness: PostTradeCompletenessResult = (
+            assess_post_trade_review_completeness(
             execution_summary=task.execution_summary,
             outcome_metrics=task.outcome_metrics,
             exit_context=task.exit_context,
             realized_outcome=task.realized_outcome,
             post_trade_notes=task.post_trade_notes,
             feedback_notes=task.feedback_notes,
+            )
         )
-        candidate_memory_seed = {
+        candidate_memory_seed: CandidateMemorySeed = {
             "title": self._build_candidate_title(task),
             "subject": task.subject,
             "symbol": task.symbol,
@@ -315,7 +327,7 @@ class ReflectionContextService:
         what_failed_or_underweighted: list[str],
         lessons: list[str],
         future_adjustments: list[str],
-    ) -> dict[str, Any]:
+    ) -> DecisionMemoryRecord:
         """Build a candidate postmortem memory record from the current reflection task."""
         return build_candidate_postmortem_record(
             subject=task.subject,
@@ -344,7 +356,10 @@ class ReflectionContextService:
             dataset=str((task.datasets or self.default_datasets)[0]),
         )
 
-    def _build_analyst_summary(self, analyst_payload: dict[str, Any] | None) -> dict[str, Any]:
+    def _build_analyst_summary(
+        self,
+        analyst_payload: dict[str, Any] | None,
+    ) -> ReflectionAnalystSummary:
         """Reduce the full analyst payload into a compact reflection block."""
         payload = analyst_payload or {}
         return {
@@ -375,7 +390,7 @@ class ReflectionContextService:
         exit_context: dict[str, Any] | None = None,
         post_trade_notes: str | None = None,
         feedback_notes: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> RealizedOutcomeSummary:
         """Normalize outcome data into a stable reflection payload."""
         normalized = dict(realized_outcome or {})
         normalized["outcome_label"] = infer_outcome_label(

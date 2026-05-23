@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...models import DecisionMemoryRecord
 from ..decision.memory import validate_decision_memory_record
 
 ALLOWED_CONFIDENCE_CHANGES = {"increase", "keep", "decrease"}
@@ -190,7 +191,7 @@ def build_candidate_postmortem_record(
     exit_context: dict[str, Any] | None = None,
     post_trade_notes: str | None = None,
     dataset: str = "dynamic",
-) -> dict[str, Any]:
+) -> DecisionMemoryRecord:
     """Build a candidate decision-memory postmortem record from reflection output."""
     normalized_outcome = outcome_label if outcome_label in ALLOWED_OUTCOME_LABELS else "unknown"
     title_subject = subject.strip() or "Unspecified decision subject"

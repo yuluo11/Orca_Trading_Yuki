@@ -7,6 +7,7 @@ from typing import Any
 from ...knowledge.indexing import KnowledgeIndexer
 from ...knowledge.repository import DatasetName, KnowledgeRepository
 from ...knowledge.retriever import KnowledgeRetriever, VectorRetrieverBackend
+from ...models import KnowledgeDocument, KnowledgeEvidenceItem
 
 
 class KnowledgeBackedAnalystService:
@@ -133,7 +134,7 @@ class KnowledgeBackedAnalystService:
             "evidence": evidence,
         }
 
-    def serialize_document(self, document: Any) -> dict[str, Any]:
+    def serialize_document(self, document: Any) -> KnowledgeDocument:
         """Convert a retrieved document into a service-friendly payload."""
         metadata = dict(getattr(document, "metadata", {}))
         return {
@@ -142,9 +143,12 @@ class KnowledgeBackedAnalystService:
             "metadata": metadata,
         }
 
-    def collect_evidence(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def collect_evidence(
+        self,
+        documents: list[KnowledgeDocument],
+    ) -> list[KnowledgeEvidenceItem]:
         """Normalize serialized documents into evidence entries for agents."""
-        evidence: list[dict[str, Any]] = []
+        evidence: list[KnowledgeEvidenceItem] = []
         for document in documents:
             metadata = dict(document.get("metadata", {}))
             evidence.append(

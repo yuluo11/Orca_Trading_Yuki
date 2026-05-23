@@ -5,6 +5,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
+from ....models import (
+    DecisionMemoryMetadata,
+    DecisionMemoryRecord,
+    DecisionMemoryValidationSummary,
+)
+
 ALLOWED_MEMORY_TYPES = {
     "decision_case",
     "decision_postmortem",
@@ -59,7 +65,9 @@ LIST_METADATA_FIELDS = (
 )
 
 
-def normalize_decision_memory_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+def normalize_decision_memory_metadata(
+    metadata: dict[str, Any] | None,
+) -> DecisionMemoryMetadata:
     """Normalize decision-memory metadata into a stable retrieval shape."""
     normalized = dict(metadata or {})
     normalized["category"] = "decision_memory"
@@ -122,7 +130,7 @@ def normalize_decision_memory_metadata(metadata: dict[str, Any] | None) -> dict[
     return normalized
 
 
-def decision_memory_record_template() -> dict[str, Any]:
+def decision_memory_record_template() -> DecisionMemoryRecord:
     """Return a canonical decision-memory record template."""
     return {
         "text": (
@@ -275,7 +283,7 @@ def validate_decision_memory_metadata(
 
 
 def validate_decision_memory_record(
-    record: dict[str, Any] | None,
+    record: DecisionMemoryRecord | dict[str, Any] | None,
     *,
     allowed_datasets: Iterable[str] | None = None,
 ) -> dict[str, Any]:
@@ -321,7 +329,7 @@ def summarize_decision_memory_validation(
     validations: list[dict[str, Any]],
     *,
     max_examples: int = 5,
-) -> dict[str, Any]:
+) -> DecisionMemoryValidationSummary:
     """Build a compact validation summary for retrieval diagnostics."""
     invalid_examples: list[dict[str, Any]] = []
     warning_examples: list[dict[str, Any]] = []

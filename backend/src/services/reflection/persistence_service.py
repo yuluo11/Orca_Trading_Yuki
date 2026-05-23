@@ -8,6 +8,7 @@ from typing import Any
 
 from ...knowledge.ingest import KnowledgeIngestor
 from ...knowledge.repository import DatasetName, KnowledgeRepository
+from ...models import DecisionMemoryRecord, ReflectionOutput, ReflectionPersistenceResult
 from ..decision.memory import validate_decision_memory_record
 
 
@@ -24,12 +25,12 @@ class ReflectionPersistenceService:
 
     def persist_reflection_result(
         self,
-        reflection_result: dict[str, Any] | None,
+        reflection_result: ReflectionOutput | dict[str, Any] | None,
         *,
         dataset: DatasetName = "dynamic",
         force: bool = False,
         record_name: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ReflectionPersistenceResult:
         """Persist a reflection candidate memory when the result is eligible."""
         if not isinstance(reflection_result, dict):
             return {
@@ -89,10 +90,10 @@ class ReflectionPersistenceService:
 
     def _prepare_record(
         self,
-        candidate_memory: dict[str, Any],
+        candidate_memory: DecisionMemoryRecord,
         *,
         dataset: DatasetName,
-    ) -> dict[str, Any]:
+    ) -> DecisionMemoryRecord:
         """Normalize the candidate memory into a writable processed-record shape."""
         metadata = dict(candidate_memory.get("metadata", {}))
         metadata["dataset"] = dataset
@@ -120,8 +121,8 @@ class ReflectionPersistenceService:
 
     def _build_record_name(
         self,
-        reflection_result: dict[str, Any],
-        prepared_record: dict[str, Any],
+        reflection_result: ReflectionOutput | dict[str, Any],
+        prepared_record: DecisionMemoryRecord,
     ) -> str:
         """Build a deterministic record name for persisted reflection memories."""
         metadata = dict(prepared_record.get("metadata", {}))

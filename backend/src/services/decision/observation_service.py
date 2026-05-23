@@ -9,6 +9,13 @@ from typing import Any
 
 from ...knowledge.ingest import KnowledgeIngestor
 from ...knowledge.repository import DatasetName, KnowledgeRepository
+from ...models import (
+    CountedLabel,
+    DecisionGuidanceObservationRecord,
+    GuidanceObservationPersistenceResult,
+    GuidanceObservationSummary,
+    GuidancePriorsSummary,
+)
 
 
 class DecisionGuidanceObservationService:
@@ -29,7 +36,7 @@ class DecisionGuidanceObservationService:
         dataset: DatasetName = "dynamic",
         force: bool = False,
         record_name: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> GuidanceObservationPersistenceResult:
         """Persist a decision-guidance observation when applied guidance is present."""
         if not isinstance(decision_result, dict):
             return {
@@ -77,7 +84,7 @@ class DecisionGuidanceObservationService:
         *,
         dataset: DatasetName,
         applied_guidance: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> DecisionGuidanceObservationRecord:
         """Build a processed-record payload describing one decision's guidance usage."""
         normalized_guidance = applied_guidance or self._normalize_string_list(
             decision_result.get("applied_postmortem_guidance")
@@ -224,7 +231,7 @@ class DecisionGuidanceObservationAnalyticsService:
         symbol: str | None = None,
         recommendation: str | None = None,
         top_n: int = 5,
-    ) -> dict[str, Any]:
+    ) -> GuidanceObservationSummary:
         """Build a compact summary over persisted decision-guidance observations."""
         records = self.repository.load_all_processed_records(dataset)
         filtered_records = [
@@ -275,7 +282,7 @@ class DecisionGuidanceObservationAnalyticsService:
         symbol: str | None = None,
         recommendation: str | None = None,
         top_n: int = 3,
-    ) -> dict[str, Any]:
+    ) -> GuidancePriorsSummary:
         """Build a compact guidance-prior summary for reuse in future decisions."""
         selected_datasets = tuple(datasets or ("dynamic",))
         guidance_counter: Counter[str] = Counter()
@@ -393,7 +400,7 @@ class DecisionGuidanceObservationAnalyticsService:
             if line.removeprefix("- ").strip()
         ]
 
-    def _format_counter(self, counter: Counter[str], *, top_n: int) -> list[dict[str, Any]]:
+    def _format_counter(self, counter: Counter[str], *, top_n: int) -> list[CountedLabel]:
         """Format a counter into a stable list of count entries."""
         return [
             {"label": label, "count": count}

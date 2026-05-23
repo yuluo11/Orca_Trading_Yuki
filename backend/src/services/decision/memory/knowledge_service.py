@@ -9,6 +9,12 @@ from typing import TYPE_CHECKING, Any
 from ....knowledge.indexing import KnowledgeIndexer
 from ....knowledge.repository import DatasetName, KnowledgeRepository
 from ....knowledge.retriever import KnowledgeRetriever, VectorRetrieverBackend
+from ....models import (
+    DecisionMemoryValidationSummary,
+    GuidancePriorsSummary,
+    KnowledgeEvidenceItem,
+    RankedKnowledgeDocument,
+)
 from ..observation_service import DecisionGuidanceObservationAnalyticsService
 from .schema import (
     normalize_decision_memory_metadata,
@@ -234,8 +240,8 @@ class DecisionKnowledgeService:
         scenario_profile: dict[str, Any],
         datasets: tuple[DatasetName, ...],
         ranked_documents: list[dict[str, Any]],
-        validation_summary: dict[str, Any],
-        guidance_priors: dict[str, Any],
+        validation_summary: DecisionMemoryValidationSummary,
+        guidance_priors: GuidancePriorsSummary,
     ) -> dict[str, Any]:
         """Build an agent-friendly context payload from retrieved decision records."""
         serialized_documents = [self.serialize_document(item) for item in ranked_documents]
@@ -255,7 +261,7 @@ class DecisionKnowledgeService:
             "guidance_priors": guidance_priors,
         }
 
-    def serialize_document(self, ranked_document: dict[str, Any]) -> dict[str, Any]:
+    def serialize_document(self, ranked_document: dict[str, Any]) -> RankedKnowledgeDocument:
         """Convert a ranked document into a decision-service friendly payload."""
         document = ranked_document["document"]
         metadata = normalize_decision_memory_metadata(getattr(document, "metadata", {}))
@@ -271,9 +277,12 @@ class DecisionKnowledgeService:
             "match_reasons": ranked_document["match_reasons"],
         }
 
-    def collect_evidence(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def collect_evidence(
+        self,
+        documents: list[RankedKnowledgeDocument],
+    ) -> list[KnowledgeEvidenceItem]:
         """Normalize serialized documents into compact evidence entries."""
-        evidence: list[dict[str, Any]] = []
+        evidence: list[KnowledgeEvidenceItem] = []
         for document in documents:
             metadata = dict(document.get("metadata", {}))
             evidence.append(
@@ -311,7 +320,7 @@ class DecisionKnowledgeService:
         task: "DecisionTask",
         *,
         datasets: tuple[DatasetName, ...],
-    ) -> dict[str, Any]:
+    ) -> GuidancePriorsSummary:
         """Summarize recurring guidance usage for the current symbol as bounded priors."""
         if not task.symbol:
             return {

@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, TypedDict
 
+from .config import build_app_config
 from .knowledge.repository import DatasetName, KnowledgeRepository
 from .llm.client import LLMClient, LLMRunnable, ensure_llm_client
+from .models import (
+    AnalystOrchestrationResult,
+    AnalystResult,
+    DecisionOutput,
+    DecisionRealizationResult,
+    GuidanceObservationPersistenceResult,
+    GuidanceObservationSummary,
+    GuidancePriorsSummary,
+    ReflectionOutput,
+    ReflectionPersistenceResult,
+    ReflectionPersistenceRunResult,
+)
 from .agents.analysts.base_agent import (
     AnalystRuntimeState,
     AnalystTask,
@@ -36,18 +48,12 @@ from .services.decision import (
 from .services.reflection import ReflectionContextService, ReflectionPersistenceService
 from .tools.analyst.tooling import AnalystToolRegistry, KnowledgeBaseSearchTool
 
-SRC_DIR = Path(__file__).resolve().parent
-PROMPTS_ROOT_DIR = SRC_DIR / "prompts"
-ANALYST_PROMPTS_DIR = PROMPTS_ROOT_DIR / "analysts"
-DECISION_PROMPTS_DIR = PROMPTS_ROOT_DIR / "decision"
-REFLECTION_PROMPTS_DIR = PROMPTS_ROOT_DIR / "reflection"
-DEFAULT_ANALYST_SEQUENCE = (
-    "market_analyst",
-    "news_analyst",
-    "sentiment_analyst",
-    "social_analyst",
-    "graph_analyst",
-)
+APP_CONFIG = build_app_config()
+PROMPTS_ROOT_DIR = APP_CONFIG.prompts.root_dir
+ANALYST_PROMPTS_DIR = APP_CONFIG.prompts.analysts_dir
+DECISION_PROMPTS_DIR = APP_CONFIG.prompts.decision_dir
+REFLECTION_PROMPTS_DIR = APP_CONFIG.prompts.reflection_dir
+DEFAULT_ANALYST_SEQUENCE = APP_CONFIG.workflow.default_analyst_sequence
 
 
 class AppRuntimeState(TypedDict, total=False):
@@ -61,9 +67,9 @@ class AppRuntimeState(TypedDict, total=False):
     metadata_filter: dict[str, Any] | None
     max_documents: int | None
     messages: list[Any]
-    analyst_outputs: dict[str, dict[str, Any]]
-    decision_output: dict[str, Any]
-    reflection_output: dict[str, Any]
+    analyst_outputs: dict[str, AnalystResult]
+    decision_output: DecisionOutput
+    reflection_output: ReflectionOutput
     portfolio_context: dict[str, Any] | None
 
 
@@ -318,7 +324,7 @@ def run_graph_analyst(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> AnalystResult:
     """Run the graph analyst directly without compiling a LangGraph workflow."""
     task = AnalystTask(
         subject=subject,
@@ -344,7 +350,7 @@ def run_market_analyst(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> AnalystResult:
     """Run the market analyst directly."""
     task = AnalystTask(
         subject=subject,
@@ -369,7 +375,7 @@ def run_news_analyst(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> AnalystResult:
     """Run the news analyst directly."""
     task = AnalystTask(
         subject=subject,
@@ -394,7 +400,7 @@ def run_sentiment_analyst(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> AnalystResult:
     """Run the sentiment analyst directly."""
     task = AnalystTask(
         subject=subject,
@@ -419,7 +425,7 @@ def run_social_analyst(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> AnalystResult:
     """Run the social analyst directly."""
     task = AnalystTask(
         subject=subject,
@@ -444,7 +450,7 @@ def run_analyst_orchestrator(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> AnalystOrchestrationResult:
     """Run the internal multi-analyst orchestrator and return the aggregate result."""
     task = AnalystTask(
         subject=subject,
@@ -487,14 +493,14 @@ def run_analyst_realization(
 
 def run_decision_advisory(
     *,
-    analyst_payload: dict[str, Any],
+    analyst_payload: AnalystOrchestrationResult,
     portfolio_context: dict[str, Any] | None = None,
     datasets: tuple[DatasetName, ...] | None = None,
     metadata_filter: dict[str, Any] | None = None,
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> DecisionOutput:
     """Run the decision advisory agent over an analyst orchestration payload."""
     task = DecisionTask.from_analyst_payload(
         analyst_payload,
@@ -509,8 +515,8 @@ def run_decision_advisory(
 
 def run_reflection(
     *,
-    decision_output: dict[str, Any],
-    analyst_payload: dict[str, Any] | None = None,
+    decision_output: DecisionOutput,
+    analyst_payload: AnalystOrchestrationResult | None = None,
     portfolio_context: dict[str, Any] | None = None,
     execution_summary: dict[str, Any] | None = None,
     outcome_metrics: dict[str, Any] | None = None,
@@ -523,7 +529,7 @@ def run_reflection(
     max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> ReflectionOutput:
     """Run the post-decision reflection agent over a finalized decision payload."""
     task = ReflectionTask.from_decision_payload(
         decision_output,
@@ -545,11 +551,11 @@ def run_reflection(
 
 def persist_reflection_memory(
     *,
-    reflection_result: dict[str, Any],
+    reflection_result: ReflectionOutput,
     dataset: DatasetName = "dynamic",
     force: bool = False,
     repository: KnowledgeRepository | None = None,
-) -> dict[str, Any]:
+) -> ReflectionPersistenceResult:
     """Persist a reflection candidate memory into the processed knowledge base."""
     service = build_reflection_persistence_service(repository=repository)
     return service.persist_reflection_result(
@@ -561,11 +567,11 @@ def persist_reflection_memory(
 
 def persist_decision_guidance_observation(
     *,
-    decision_result: dict[str, Any],
+    decision_result: DecisionOutput,
     dataset: DatasetName = "dynamic",
     force: bool = False,
     repository: KnowledgeRepository | None = None,
-) -> dict[str, Any]:
+) -> GuidanceObservationPersistenceResult:
     """Persist a structured observation describing applied postmortem guidance."""
     service = build_decision_guidance_observation_service(repository=repository)
     return service.persist_guidance_observation(
@@ -582,7 +588,7 @@ def summarize_decision_guidance_observations(
     recommendation: str | None = None,
     top_n: int = 5,
     repository: KnowledgeRepository | None = None,
-) -> dict[str, Any]:
+) -> GuidanceObservationSummary:
     """Summarize persisted decision-guidance observation records."""
     service = build_decision_guidance_observation_analytics_service(repository=repository)
     return service.summarize_observations(
@@ -600,7 +606,7 @@ def summarize_decision_guidance_priors(
     recommendation: str | None = None,
     top_n: int = 3,
     repository: KnowledgeRepository | None = None,
-) -> dict[str, Any]:
+) -> GuidancePriorsSummary:
     """Summarize recurring applied-guidance priors for future decision runs."""
     service = build_decision_guidance_observation_analytics_service(repository=repository)
     return service.summarize_guidance_priors(
@@ -613,8 +619,8 @@ def summarize_decision_guidance_priors(
 
 def run_reflection_and_persist(
     *,
-    decision_output: dict[str, Any],
-    analyst_payload: dict[str, Any] | None = None,
+    decision_output: DecisionOutput,
+    analyst_payload: AnalystOrchestrationResult | None = None,
     portfolio_context: dict[str, Any] | None = None,
     execution_summary: dict[str, Any] | None = None,
     outcome_metrics: dict[str, Any] | None = None,
@@ -630,7 +636,7 @@ def run_reflection_and_persist(
     repository: KnowledgeRepository | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> ReflectionPersistenceRunResult:
     """Run reflection and then persist the candidate memory when eligible."""
     reflection_result = run_reflection(
         decision_output=decision_output,
@@ -675,7 +681,7 @@ def run_decision_realization(
     decision_max_documents: int | None = None,
     llm_client: LLMClient | None = None,
     llm: LLMRunnable | None = None,
-) -> dict[str, Any]:
+) -> DecisionRealizationResult:
     """Run the analyst layer first, then synthesize an advisory decision payload."""
     analyst_payload = run_analyst_orchestrator(
         subject=subject,

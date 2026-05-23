@@ -8,6 +8,7 @@ from typing import Any, Protocol, TypedDict
 
 from ...knowledge.repository import DatasetName
 from ...llm.client import LLMClient, LLMRunnable, ensure_llm_client
+from ...models import AnalystOrchestrationResult, AnalystResult, DecisionOutput
 from ...services.decision.memory import DecisionKnowledgeService
 
 ALLOWED_RECOMMENDATIONS = {
@@ -46,7 +47,7 @@ class DecisionTask:
     key_signals: list[str] = field(default_factory=list)
     portfolio_risks: list[str] = field(default_factory=list)
     cross_analyst_observations: list[str] = field(default_factory=list)
-    analyst_results: list[dict[str, Any]] = field(default_factory=list)
+    analyst_results: list[AnalystResult] = field(default_factory=list)
     analyst_sequence: list[str] = field(default_factory=list)
     portfolio_context: dict[str, Any] | None = None
     datasets: tuple[DatasetName, ...] | None = None
@@ -57,7 +58,7 @@ class DecisionTask:
     @classmethod
     def from_analyst_payload(
         cls,
-        analyst_payload: dict[str, Any],
+        analyst_payload: AnalystOrchestrationResult,
         *,
         portfolio_context: dict[str, Any] | None = None,
         datasets: tuple[DatasetName, ...] | None = None,
@@ -123,7 +124,7 @@ class DecisionRuntimeState(TypedDict, total=False):
     metadata_filter: dict[str, Any] | None
     max_documents: int | None
     messages: list[Any]
-    decision_output: dict[str, Any]
+    decision_output: DecisionOutput
 
 
 class PromptProvider(Protocol):

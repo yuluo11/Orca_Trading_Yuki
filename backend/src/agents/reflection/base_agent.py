@@ -7,6 +7,14 @@ from typing import Any, TypedDict
 
 from ...knowledge.repository import DatasetName
 from ...llm.client import LLMClient, LLMRunnable, ensure_llm_client
+from ...models import (
+    AnalystOrchestrationResult,
+    DecisionMemoryRecord,
+    DecisionOutput,
+    ReflectionContext,
+    ReflectionOutput,
+    ReflectionReferenceCase,
+)
 from ...services.decision.memory import validate_decision_memory_record
 from ...services.reflection import (
     ReflectionContextService,
@@ -30,8 +38,8 @@ class ReflectionTask:
     symbol: str | None = None
     trade_date: str | None = None
     extra_context: str | None = None
-    decision_output: dict[str, Any] = field(default_factory=dict)
-    analyst_payload: dict[str, Any] = field(default_factory=dict)
+    decision_output: DecisionOutput = field(default_factory=dict)
+    analyst_payload: AnalystOrchestrationResult = field(default_factory=dict)
     portfolio_context: dict[str, Any] | None = None
     execution_summary: dict[str, Any] | None = None
     outcome_metrics: dict[str, Any] | None = None
@@ -47,9 +55,9 @@ class ReflectionTask:
     @classmethod
     def from_decision_payload(
         cls,
-        decision_output: dict[str, Any],
+        decision_output: DecisionOutput,
         *,
-        analyst_payload: dict[str, Any] | None = None,
+        analyst_payload: AnalystOrchestrationResult | None = None,
         portfolio_context: dict[str, Any] | None = None,
         execution_summary: dict[str, Any] | None = None,
         outcome_metrics: dict[str, Any] | None = None,
@@ -95,8 +103,8 @@ class ReflectionRuntimeState(TypedDict, total=False):
     symbol: str | None
     trade_date: str | None
     extra_context: str | None
-    decision_output: dict[str, Any]
-    analyst_payload: dict[str, Any]
+    decision_output: DecisionOutput
+    analyst_payload: AnalystOrchestrationResult
     portfolio_context: dict[str, Any] | None
     execution_summary: dict[str, Any] | None
     outcome_metrics: dict[str, Any] | None
@@ -108,7 +116,7 @@ class ReflectionRuntimeState(TypedDict, total=False):
     metadata_filter: dict[str, Any] | None
     max_documents: int | None
     messages: list[Any]
-    reflection_output: dict[str, Any]
+    reflection_output: ReflectionOutput
 
 
 class BaseReflectionAgent:
@@ -131,7 +139,7 @@ class BaseReflectionAgent:
         self.prompt_provider = prompt_provider
         self.llm_client = ensure_llm_client(llm_client=llm_client, llm=llm)
 
-    def retrieve_reflection_context(self, task: ReflectionTask) -> dict[str, Any]:
+    def retrieve_reflection_context(self, task: ReflectionTask) -> ReflectionContext:
         """Retrieve historical context relevant to the current reflection task."""
         return self.knowledge_service.analyze(
             task,
@@ -143,7 +151,7 @@ class BaseReflectionAgent:
     def build_prompt_context(
         self,
         task: ReflectionTask,
-        reflection_context: dict[str, Any],
+        reflection_context: ReflectionContext,
     ) -> dict[str, Any]:
         """Build the runtime context used while rendering the reflection prompt."""
         return {
@@ -196,7 +204,7 @@ class BaseReflectionAgent:
         self,
         task: ReflectionTask,
         *,
-        reflection_context: dict[str, Any],
+        reflection_context: ReflectionContext,
     ) -> dict[str, Any]:
         """Build the structured payload sent into the configured llm_client."""
         return {
@@ -234,7 +242,7 @@ class BaseReflectionAgent:
             ),
         }
 
-    def invoke(self, task: ReflectionTask) -> dict[str, Any]:
+    def invoke(self, task: ReflectionTask) -> ReflectionOutput:
         """Run the reflection flow end to end."""
         reflection_context = self.retrieve_reflection_context(task)
         prompt_context = self.build_prompt_context(task, reflection_context)
@@ -244,9 +252,9 @@ class BaseReflectionAgent:
     def synthesize(
         self,
         task: ReflectionTask,
-        reflection_context: dict[str, Any],
+        reflection_context: ReflectionContext,
         prompt: str,
-    ) -> dict[str, Any]:
+    ) -> ReflectionOutput:
         """Create the final reflection payload using the model or fallback logic."""
         if self.llm_client is not None:
             return self._synthesize_with_llm(task, reflection_context, prompt)
@@ -255,9 +263,9 @@ class BaseReflectionAgent:
     def _synthesize_with_llm(
         self,
         task: ReflectionTask,
-        reflection_context: dict[str, Any],
+        reflection_context: ReflectionContext,
         prompt: str,
-    ) -> dict[str, Any]:
+    ) -> ReflectionOutput:
         """Invoke the llm_client and normalize the reflection output."""
         llm_payload = self.build_llm_payload(task, reflection_context=reflection_context)
         parsed_response = self.llm_client.invoke_json(
@@ -275,9 +283,9 @@ class BaseReflectionAgent:
     def _synthesize_fallback(
         self,
         task: ReflectionTask,
-        reflection_context: dict[str, Any],
+        reflection_context: ReflectionContext,
         prompt: str,
-    ) -> dict[str, Any]:
+    ) -> ReflectionOutput:
         """Produce a cautious deterministic reflection result."""
         outcome_label = infer_outcome_label(
             task.realized_outcome,
@@ -293,7 +301,7 @@ class BaseReflectionAgent:
         future_adjustments = self._fallback_future_adjustments(task, outcome_label)
         confidence_change = self._fallback_confidence_change(outcome_label)
         reflection_summary = self._fallback_reflection_summary(task, outcome_label)
-        candidate_memory = self.knowledge_service.build_candidate_memory(
+        candidate_memory: DecisionMemoryRecord = self.knowledge_service.build_candidate_memory(
             task,
             reflection_summary=reflection_summary,
             what_worked=what_worked,
@@ -328,12 +336,12 @@ class BaseReflectionAgent:
         llm_result: dict[str, Any],
         *,
         task: ReflectionTask,
-        reflection_context: dict[str, Any],
+        reflection_context: ReflectionContext,
         prompt: str,
-    ) -> dict[str, Any]:
+    ) -> ReflectionOutput:
         """Normalize LLM output into the shared reflection payload shape."""
         fallback_result = self._synthesize_fallback(task, reflection_context, prompt)
-        candidate_memory = llm_result.get("candidate_memory")
+        candidate_memory: DecisionMemoryRecord | Any = llm_result.get("candidate_memory")
         if not self._is_valid_candidate_memory(candidate_memory):
             candidate_memory = fallback_result["candidate_memory"]
 
@@ -407,7 +415,7 @@ class BaseReflectionAgent:
             "candidate_memory": {"text": "string", "metadata": {"title": "string"}},
         }
 
-    def build_agent_message(self, result: dict[str, Any]) -> Any:
+    def build_agent_message(self, result: ReflectionOutput | dict[str, Any]) -> Any:
         """Create a graph-friendly message from the reflection payload."""
         content = result.get("reflection_summary", "")
         try:
@@ -551,7 +559,7 @@ class BaseReflectionAgent:
         reflection_context: dict[str, Any],
     ) -> list[dict[str, str]]:
         """Convert retrieved documents into compact reflection reference cases."""
-        reference_cases: list[dict[str, str]] = []
+        reference_cases: list[ReflectionReferenceCase] = []
         for document in reflection_context.get("documents", [])[:3]:
             metadata = dict(document.get("metadata", {}))
             reference_cases.append(
@@ -581,13 +589,13 @@ class BaseReflectionAgent:
         self,
         value: Any,
         *,
-        fallback: list[dict[str, str]],
-    ) -> list[dict[str, str]]:
+        fallback: list[ReflectionReferenceCase],
+    ) -> list[ReflectionReferenceCase]:
         """Normalize model output into the shared reference-case schema."""
         if not isinstance(value, list):
             return fallback
 
-        normalized_cases: list[dict[str, str]] = []
+        normalized_cases: list[ReflectionReferenceCase] = []
         for item in value:
             if not isinstance(item, dict):
                 continue
