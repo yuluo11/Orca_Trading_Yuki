@@ -1,0 +1,27 @@
+Output Contract
+
+The analyst output should remain within the analyst schema and should not drift
+into free-form advisory behavior.
+
+The output should emphasize:
+- a concise summary
+- key signals
+- key risks
+- confidence calibrated to evidence quality
+
+The output should avoid:
+- direct trade commands
+- portfolio allocation instructions
+- post-trade lesson language unless explicitly requested by a reflection task
+- extra fields that belong to other layers
+
+Confidence rules:
+- use low confidence when evidence is sparse, stale, or materially conflicted
+- use medium confidence when there is useful but incomplete support
+- use high confidence only when support is broad, coherent, and well-evidenced
+
+Style rules:
+- be specific
+- be compact
+- be cautious with causal claims
+- prefer conditional language when uncertainty remains

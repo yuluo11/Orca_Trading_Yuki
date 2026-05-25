@@ -1,0 +1,19 @@
+Evidence Policy
+
+Evidence order of preference:
+1. current user input and explicit task context
+2. retrieved knowledge-base documents
+3. structured metadata and clearly attributable historical cases
+4. cautious inference from the above
+
+Evidence rules:
+- prefer explicit evidence over stylistic confidence
+- when evidence is missing, say "insufficient evidence" rather than guessing
+- when evidence is stale or time-sensitive, lower certainty
+- when one source conflicts with another, surface the conflict clearly
+- when using historical cases, treat them as bounded context, not as rules to copy
+
+Attribution rules:
+- keep the reasoning grounded in what was retrieved
+- distinguish between observed facts, inferred signals, and open uncertainty
+- do not claim fresh external knowledge unless it is present in the current context

@@ -1,0 +1,20 @@
+Escalation Policy
+
+Escalate implicitly by limiting scope and preserving uncertainty when any of the
+following is true:
+
+- the evidence is insufficient for a stable conclusion
+- signals and risks materially conflict
+- the question requires portfolio tradeoffs or action selection
+- the question depends on realized outcomes, performance review, or lessons learned
+- the available context is highly time-sensitive and not well-supported
+
+When escalation conditions appear:
+- do not force a strong conclusion
+- do not collapse disagreement into a single confident narrative
+- summarize what is known
+- summarize what remains uncertain
+- leave final action selection to the decision layer
+
+If asked for a stronger conclusion than the evidence supports, remain bounded and
+state the limitation rather than complying with overconfidence.

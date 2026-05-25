@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 from .config import build_app_config
 from .knowledge.repository import DatasetName, KnowledgeRepository
 from .llm.client import LLMClient, LLMRunnable, ensure_llm_client
+from .llm import build_configured_llm_client
 from .models import (
     AnalystOrchestrationResult,
     AnalystResult,
@@ -103,6 +104,23 @@ def build_reflection_prompt_provider(
     return ReflectionFilePromptProvider(prompts_dir or REFLECTION_PROMPTS_DIR)
 
 
+def build_default_llm_client() -> LLMClient | None:
+    """Build the configured default live client when LLM settings are present."""
+    return build_configured_llm_client(APP_CONFIG.llm)
+
+
+def resolve_runtime_llm_client(
+    *,
+    llm_client: LLMClient | None = None,
+    llm: LLMRunnable | None = None,
+) -> LLMClient | None:
+    """Resolve the runtime llm_client from explicit inputs or app configuration."""
+    resolved = ensure_llm_client(llm_client=llm_client, llm=llm)
+    if resolved is not None:
+        return resolved
+    return build_default_llm_client()
+
+
 def build_graph_analyst_agent(
     *,
     repository: KnowledgeRepository | None = None,
@@ -117,7 +135,7 @@ def build_graph_analyst_agent(
         service=service,
         tool_registry=registry,
         prompt_provider=prompt_provider or build_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -135,7 +153,7 @@ def build_market_analyst_agent(
         service=service,
         tool_registry=registry,
         prompt_provider=prompt_provider or build_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -153,7 +171,7 @@ def build_news_analyst_agent(
         service=service,
         tool_registry=registry,
         prompt_provider=prompt_provider or build_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -171,7 +189,7 @@ def build_sentiment_analyst_agent(
         service=service,
         tool_registry=registry,
         prompt_provider=prompt_provider or build_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -189,7 +207,7 @@ def build_social_analyst_agent(
         service=service,
         tool_registry=registry,
         prompt_provider=prompt_provider or build_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -252,7 +270,7 @@ def build_analyst_orchestrator(
             llm=llm,
         ),
         sequence=DEFAULT_ANALYST_SEQUENCE,
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
         prompts_dir=ANALYST_PROMPTS_DIR,
     )
 
@@ -269,7 +287,7 @@ def build_decision_advisory_agent(
     return DecisionAdvisoryAgent(
         service=service,
         prompt_provider=prompt_provider or build_decision_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
@@ -285,7 +303,7 @@ def build_reflection_agent(
     return ReflectionAgent(
         service=service,
         prompt_provider=prompt_provider or build_reflection_prompt_provider(),
-        llm_client=ensure_llm_client(llm_client=llm_client, llm=llm),
+        llm_client=resolve_runtime_llm_client(llm_client=llm_client, llm=llm),
     )
 
 
