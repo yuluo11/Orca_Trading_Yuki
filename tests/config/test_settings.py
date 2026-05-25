@@ -50,6 +50,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual("https://api.openai.com/v1", config.llm.base_url)
         self.assertEqual(0.2, config.llm.temperature)
         self.assertEqual(60.0, config.llm.timeout_seconds)
+        self.assertEqual(2, config.llm.max_retries)
         self.assertIsNone(config.llm.api_key)
         self.assertIsNone(config.llm.model)
         self.assertIsNone(config.llm.mock_response)
@@ -77,6 +78,7 @@ class AppConfigTests(unittest.TestCase):
                 "ORCA_LLM_TEMPERATURE": "0.45",
                 "ORCA_LLM_TIMEOUT_SECONDS": "12.5",
                 "ORCA_LLM_MAX_TOKENS": "256",
+                "ORCA_LLM_MAX_RETRIES": "4",
                 "ORCA_LLM_MOCK_RESPONSE": "unused",
                 "ORCA_LLM_MOCK_JSON_RESPONSE": "{\"summary\": \"unused\"}",
             },
@@ -91,6 +93,7 @@ class AppConfigTests(unittest.TestCase):
         self.assertEqual(0.45, config.llm.temperature)
         self.assertEqual(12.5, config.llm.timeout_seconds)
         self.assertEqual(256, config.llm.max_tokens)
+        self.assertEqual(4, config.llm.max_retries)
         self.assertEqual("unused", config.llm.mock_response)
         self.assertEqual("{\"summary\": \"unused\"}", config.llm.mock_json_response)
         self.assertTrue(config.llm.is_configured)

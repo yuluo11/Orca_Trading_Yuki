@@ -29,6 +29,7 @@ class GeminiFactoryTests(unittest.TestCase):
             temperature=0.25,
             timeout_seconds=11.0,
             max_tokens=768,
+            max_retries=4,
         )
 
         with patch.dict(sys.modules, {"langchain_google_genai": fake_module}):
@@ -41,6 +42,7 @@ class GeminiFactoryTests(unittest.TestCase):
         self.assertEqual(0.25, client.runnable.kwargs["temperature"])
         self.assertEqual(11.0, client.runnable.kwargs["timeout"])
         self.assertEqual(768, client.runnable.kwargs["max_output_tokens"])
+        self.assertEqual(4, client.runnable.kwargs["max_retries"])
 
 
 if __name__ == "__main__":

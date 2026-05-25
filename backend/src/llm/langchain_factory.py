@@ -32,6 +32,7 @@ def _build_langchain_openai_client(config: LLMConfig) -> LLMClient | None:
         "model": config.model or "",
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
+        "max_retries": config.max_retries,
     }
     if config.api_key:
         kwargs["api_key"] = config.api_key
@@ -40,7 +41,12 @@ def _build_langchain_openai_client(config: LLMConfig) -> LLMClient | None:
     if config.max_tokens is not None:
         kwargs["max_tokens"] = config.max_tokens
 
-    return LangChainRunnableLLMClient(ChatOpenAI(**kwargs))
+    return LangChainRunnableLLMClient(
+        ChatOpenAI(**kwargs),
+        provider_name="openai_compatible",
+        model_name=config.model,
+        max_retries=config.max_retries,
+    )
 
 
 def _build_langchain_anthropic_client(config: LLMConfig) -> LLMClient | None:
@@ -54,6 +60,7 @@ def _build_langchain_anthropic_client(config: LLMConfig) -> LLMClient | None:
         "model": config.model or "",
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
+        "max_retries": config.max_retries,
     }
     if config.api_key:
         kwargs["api_key"] = config.api_key
@@ -62,7 +69,12 @@ def _build_langchain_anthropic_client(config: LLMConfig) -> LLMClient | None:
     if config.max_tokens is not None:
         kwargs["max_tokens"] = config.max_tokens
 
-    return LangChainRunnableLLMClient(ChatAnthropic(**kwargs))
+    return LangChainRunnableLLMClient(
+        ChatAnthropic(**kwargs),
+        provider_name="anthropic",
+        model_name=config.model,
+        max_retries=config.max_retries,
+    )
 
 
 def _build_langchain_gemini_client(config: LLMConfig) -> LLMClient | None:
@@ -76,10 +88,16 @@ def _build_langchain_gemini_client(config: LLMConfig) -> LLMClient | None:
         "model": config.model or "",
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
+        "max_retries": config.max_retries,
     }
     if config.api_key:
         kwargs["google_api_key"] = config.api_key
     if config.max_tokens is not None:
         kwargs["max_output_tokens"] = config.max_tokens
 
-    return LangChainRunnableLLMClient(ChatGoogleGenerativeAI(**kwargs))
+    return LangChainRunnableLLMClient(
+        ChatGoogleGenerativeAI(**kwargs),
+        provider_name="gemini",
+        model_name=config.model,
+        max_retries=config.max_retries,
+    )

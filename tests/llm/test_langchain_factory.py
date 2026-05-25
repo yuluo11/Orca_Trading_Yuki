@@ -37,6 +37,7 @@ class LangChainFactoryTests(unittest.TestCase):
             temperature=0.35,
             timeout_seconds=12.0,
             max_tokens=256,
+            max_retries=3,
         )
 
         with patch.dict(sys.modules, {"langchain_openai": fake_module}):
@@ -50,6 +51,7 @@ class LangChainFactoryTests(unittest.TestCase):
         self.assertEqual(0.35, client.runnable.kwargs["temperature"])
         self.assertEqual(12.0, client.runnable.kwargs["timeout"])
         self.assertEqual(256, client.runnable.kwargs["max_tokens"])
+        self.assertEqual(3, client.runnable.kwargs["max_retries"])
 
     def test_build_langchain_backed_llm_client_uses_chat_anthropic_when_sdk_exists(self) -> None:
         fake_module = ModuleType("langchain_anthropic")
@@ -62,6 +64,7 @@ class LangChainFactoryTests(unittest.TestCase):
             temperature=0.1,
             timeout_seconds=9.0,
             max_tokens=512,
+            max_retries=5,
         )
 
         with patch.dict(sys.modules, {"langchain_anthropic": fake_module}):
@@ -75,6 +78,7 @@ class LangChainFactoryTests(unittest.TestCase):
         self.assertEqual(0.1, client.runnable.kwargs["temperature"])
         self.assertEqual(9.0, client.runnable.kwargs["timeout"])
         self.assertEqual(512, client.runnable.kwargs["max_tokens"])
+        self.assertEqual(5, client.runnable.kwargs["max_retries"])
 
 
 if __name__ == "__main__":

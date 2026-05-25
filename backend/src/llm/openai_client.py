@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 from urllib import error, request
 
-from .client import parse_json_response
+from .client import extract_text_content, invoke_with_retries, parse_json_response
 
 
 class OpenAICompatibleLLMClient:
@@ -21,6 +22,7 @@ class OpenAICompatibleLLMClient:
         temperature: float = 0.2,
         timeout_seconds: float = 60.0,
         max_tokens: int | None = None,
+        max_retries: int = 2,
     ) -> None:
         self.api_key = api_key
         self.model = model
@@ -28,6 +30,7 @@ class OpenAICompatibleLLMClient:
         self.temperature = temperature
         self.timeout_seconds = timeout_seconds
         self.max_tokens = max_tokens
+        self.max_retries = max(0, max_retries)
 
     def invoke(self, prompt: str, *, payload: dict[str, Any] | None = None) -> Any:
         """Invoke the configured chat-completions endpoint and return raw text content."""
@@ -39,9 +42,16 @@ class OpenAICompatibleLLMClient:
         if self.max_tokens is not None:
             request_payload["max_tokens"] = self.max_tokens
 
-        response_payload = self._post_json(
-            "/chat/completions",
-            body=request_payload,
+        response_payload = invoke_with_retries(
+            lambda: self._post_json(
+                "/chat/completions",
+                body=request_payload,
+            ),
+            provider_name="openai_compatible",
+            model_name=self.model,
+            operation_name="invoke",
+            max_retries=self.max_retries,
+            payload_keys=sorted((payload or {}).keys()),
         )
         return self._extract_content(response_payload)
 
@@ -62,6 +72,13 @@ class OpenAICompatibleLLMClient:
             )
         response = self.invoke(structured_prompt, payload=payload)
         return parse_json_response(response)
+
+    def stream(self, prompt: str, *, payload: dict[str, Any] | None = None) -> Iterator[str]:
+        """Yield one normalized chunk from the current non-streaming HTTP implementation."""
+        response = self.invoke(prompt, payload=payload)
+        text = extract_text_content(response)
+        if text:
+            yield text
 
     def _build_messages(
         self,

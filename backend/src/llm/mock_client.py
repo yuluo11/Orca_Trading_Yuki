@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 from .client import parse_json_response
@@ -53,3 +54,18 @@ class MockLLMClient:
         if self.json_response is not None:
             return dict(self.json_response)
         return parse_json_response(self.response)
+
+    def stream(self, prompt: str, *, payload: dict[str, Any] | None = None) -> Iterator[str]:
+        """Yield the configured mock response as one streamed chunk."""
+        self.calls.append(
+            {
+                "method": "stream",
+                "prompt": prompt,
+                "payload": payload,
+            }
+        )
+        if self.json_response is not None:
+            yield json.dumps(self.json_response, ensure_ascii=False)
+            return
+        if self.response is not None:
+            yield str(self.response)

@@ -35,6 +35,7 @@ def build_configured_llm_client(config: LLMConfig) -> LLMClient | None:
             temperature=config.temperature,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
+            max_retries=config.max_retries,
         )
 
     if config.provider in {"anthropic", "claude"}:
@@ -45,6 +46,7 @@ def build_configured_llm_client(config: LLMConfig) -> LLMClient | None:
             temperature=config.temperature,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
+            max_retries=config.max_retries,
         )
 
     raise ValueError(f"Unsupported LLM provider: {config.provider}")

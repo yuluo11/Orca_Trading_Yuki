@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 import unittest
 
 from backend.src.app import (
@@ -63,7 +64,10 @@ def build_analyst_payload(*, subject: str, symbol: str, trade_date: str) -> dict
 
 class PostTradeLearningLoopTests(unittest.TestCase):
     def test_post_trade_learning_loop_runs_end_to_end(self) -> None:
-        with TemporaryDirectory() as tmpdir:
+        with TemporaryDirectory() as tmpdir, patch(
+            "backend.src.app.build_default_llm_client",
+            return_value=None,
+        ):
             repository = KnowledgeRepository(data_root=Path(tmpdir))
             portfolio_context = {
                 "cash_pct": 14,

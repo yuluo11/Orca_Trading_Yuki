@@ -55,6 +55,7 @@ class LLMConfig:
     temperature: float
     timeout_seconds: float
     max_tokens: int | None
+    max_retries: int = 2
     mock_response: str | None = None
     mock_json_response: str | None = None
 
@@ -123,6 +124,7 @@ def build_app_config(src_dir: Path | None = None) -> AppConfig:
                 default=60.0,
             ),
             max_tokens=_read_env_int("ORCA_LLM_MAX_TOKENS", env=env),
+            max_retries=_read_env_int("ORCA_LLM_MAX_RETRIES", env=env, default=2),
             mock_response=_read_env("ORCA_LLM_MOCK_RESPONSE", env=env),
             mock_json_response=_read_env("ORCA_LLM_MOCK_JSON_RESPONSE", env=env),
         ),
@@ -199,15 +201,16 @@ def _read_env_int(
     name: str,
     *,
     env: Mapping[str, str] | None = None,
+    default: int | None = None,
 ) -> int | None:
     """Read an int-like environment variable with a blank-safe fallback."""
     raw_value = (env or os.environ).get(name, "").strip()
     if not raw_value:
-        return None
+        return default
     try:
         return int(raw_value)
     except ValueError:
-        return None
+        return default
 
 
 def _default_llm_base_url(provider: str) -> str | None:
