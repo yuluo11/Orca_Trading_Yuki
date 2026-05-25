@@ -40,6 +40,9 @@ class AppConfigTests(unittest.TestCase):
             / "active_perception",
             config.agent_settings.active_perception_dir,
         )
+        self.assertFalse(hasattr(config.agent_settings, "skills_dir"))
+        self.assertFalse(hasattr(config.agent_settings, "finskills_dir"))
+        self.assertFalse(hasattr(config.agent_settings, "global_skills_dir"))
         self.assertEqual(
             (
                 "market_analyst",

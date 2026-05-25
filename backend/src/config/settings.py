@@ -33,9 +33,6 @@ class AgentSettingsPaths:
     perception_dir: Path
     active_perception_dir: Path
     technical_analyst_dir: Path
-    skills_dir: Path
-    finskills_dir: Path
-    global_skills_dir: Path
 
 
 @dataclass(frozen=True)
@@ -76,9 +73,6 @@ def build_app_config(src_dir: Path | None = None) -> AppConfig:
             technical_analyst_dir=agent_settings_root_dir
             / "perception"
             / "technical analyst",
-            skills_dir=agent_settings_root_dir / "skills",
-            finskills_dir=agent_settings_root_dir / "skills" / "finskills",
-            global_skills_dir=agent_settings_root_dir / "skills" / "global_skills",
         ),
         workflow=WorkflowConfig(
             default_analyst_sequence=DEFAULT_ANALYST_SEQUENCE,
