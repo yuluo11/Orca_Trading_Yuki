@@ -62,12 +62,11 @@ class LangChainRunnableLLMClient:
         """Invoke the wrapped runnable with normalized prompt input."""
         llm_input = self._build_input(prompt, payload=payload)
         payload_keys = sorted((payload or {}).keys())
-        return invoke_with_retries(
+        return invoke_with_logging(
             lambda: self.runnable.invoke(llm_input),
             provider_name=self.provider_name,
             model_name=self.model_name,
             operation_name="invoke",
-            max_retries=self.max_retries,
             payload_keys=payload_keys,
         )
 
@@ -202,6 +201,50 @@ def invoke_with_retries(
 
     assert last_error is not None
     raise last_error
+
+
+def invoke_with_logging(
+    operation: Callable[[], RetryableOperation],
+    *,
+    provider_name: str,
+    operation_name: str,
+    model_name: str | None = None,
+    payload_keys: list[str] | None = None,
+) -> RetryableOperation:
+    """Run one LLM operation with structured logging and no outer retry loop."""
+    started_at = time.perf_counter()
+    logger.info(
+        "LLM %s start provider=%s model=%s attempt=%s payload_keys=%s",
+        operation_name,
+        provider_name,
+        model_name or "unknown",
+        1,
+        payload_keys or [],
+    )
+    try:
+        result = operation()
+    except Exception:  # noqa: BLE001
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        logger.exception(
+            "LLM %s failed provider=%s model=%s attempt=%s duration_ms=%s",
+            operation_name,
+            provider_name,
+            model_name or "unknown",
+            1,
+            duration_ms,
+        )
+        raise
+
+    duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+    logger.info(
+        "LLM %s success provider=%s model=%s attempt=%s duration_ms=%s",
+        operation_name,
+        provider_name,
+        model_name or "unknown",
+        1,
+        duration_ms,
+    )
+    return result
 
 
 def stream_with_logging(

@@ -35,7 +35,7 @@ class FakeHTTPResponse:
 
 
 class RetryBehaviorTests(unittest.TestCase):
-    def test_langchain_runnable_client_retries_once_and_recovers(self) -> None:
+    def test_langchain_runnable_client_does_not_add_outer_retry_loop(self) -> None:
         runnable = FlakyRunnable()
         client = LangChainRunnableLLMClient(
             runnable,
@@ -44,10 +44,10 @@ class RetryBehaviorTests(unittest.TestCase):
             max_retries=1,
         )
 
-        result = client.invoke_json("Prompt", payload={"subject": "NVDA"})
+        with self.assertRaisesRegex(RuntimeError, "temporary runnable failure"):
+            client.invoke_json("Prompt", payload={"subject": "NVDA"})
 
-        self.assertEqual({"summary": "Recovered"}, result)
-        self.assertEqual(2, runnable.calls)
+        self.assertEqual(1, runnable.calls)
 
     def test_openai_client_retries_once_after_urlerror(self) -> None:
         client = OpenAICompatibleLLMClient(

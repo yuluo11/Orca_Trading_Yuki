@@ -107,6 +107,23 @@ class KnowledgeIngestorTests(unittest.TestCase):
         self.assertEqual("ai supply chain note", record["metadata"]["topic"])
         self.assertTrue(record["metadata"]["source"].endswith("nvda_ai_supply_chain_note.md"))
 
+    def test_ingest_raw_text_file_does_not_treat_common_words_as_symbols(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            data_root = Path(tmpdir) / "data"
+            raw_dir = data_root / "foundation" / "raw" / "research"
+            raw_dir.mkdir(parents=True)
+            raw_file = raw_dir / "macro_setup_note.md"
+            raw_file.write_text("Macro setup commentary remains mixed.", encoding="utf-8")
+
+            repository = KnowledgeRepository(data_root=data_root)
+            ingestor = KnowledgeIngestor(repository)
+
+            record_path = ingestor.ingest_raw_text_file("foundation", raw_file)
+            record = repository.load_processed_record("foundation", record_path.stem)
+
+        self.assertNotIn("symbol", record["metadata"])
+        self.assertEqual("setup note", record["metadata"]["topic"])
+
     def test_ingest_text_skips_similar_content_when_policy_enables_similarity_detection(self) -> None:
         with TemporaryDirectory() as tmpdir:
             repository = KnowledgeRepository(data_root=Path(tmpdir))

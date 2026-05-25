@@ -138,6 +138,26 @@ class KnowledgeIndexer:
         """Build a lightweight local index for immediate use or testing."""
         return LocalVectorIndex(self.load_documents(datasets))
 
+    def load_or_build_default_backend(
+        self,
+        datasets: Sequence[DatasetName] | None = None,
+    ) -> LocalVectorIndex | PersistedTokenVectorIndex:
+        """Prefer dataset auto-index snapshots, filling gaps from live documents."""
+        selected_datasets = tuple(datasets or ("foundation", "dynamic"))
+        persisted_entries: list[dict[str, Any]] = []
+
+        for dataset in selected_datasets:
+            try:
+                backend = self.load_persisted_token_vector_index(f"{dataset}_auto_index")
+                persisted_entries.extend(backend.entries)
+            except FileNotFoundError:
+                persisted_entries.extend(
+                    _document_to_index_entry(document)
+                    for document in self.load_documents((dataset,))
+                )
+
+        return PersistedTokenVectorIndex(persisted_entries)
+
     def build_persisted_token_vector_index(
         self,
         datasets: Sequence[DatasetName] | None = None,

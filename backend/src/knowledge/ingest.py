@@ -17,6 +17,29 @@ from .repository import DatasetName, KnowledgeRepository
 
 
 IngestStatus = Literal["created", "updated", "unchanged", "skipped_duplicate"]
+COMMON_NON_SYMBOL_TOKENS = {
+    "alpha",
+    "beta",
+    "brief",
+    "event",
+    "guide",
+    "guides",
+    "learn",
+    "macro",
+    "market",
+    "news",
+    "note",
+    "notes",
+    "recap",
+    "review",
+    "risk",
+    "setup",
+    "signal",
+    "summary",
+    "trade",
+    "update",
+    "watch",
+}
 
 
 @dataclass(slots=True)
@@ -395,7 +418,11 @@ class KnowledgeIngestor:
         ]
         if tokens:
             token = tokens[0]
-            if token.isalpha() and 1 <= len(token) <= 5:
+            if (
+                token.isalpha()
+                and 1 <= len(token) <= 5
+                and token.lower() not in COMMON_NON_SYMBOL_TOKENS
+            ):
                 return token.upper()
         return None
 
@@ -509,7 +536,6 @@ class KnowledgeIngestor:
         ):
             return None
 
-        local_index = self.indexer.build_local_index((dataset,))
         if not indexing_policy.snapshot_enabled:
             return None
 

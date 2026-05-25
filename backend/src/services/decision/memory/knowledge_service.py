@@ -43,7 +43,7 @@ class DecisionKnowledgeService:
     ) -> None:
         self.repository = repository or KnowledgeRepository()
         self.indexer = KnowledgeIndexer(self.repository)
-        resolved_backend = backend or self.indexer.build_local_index(self.default_datasets)
+        resolved_backend = backend or self.indexer.load_or_build_default_backend(self.default_datasets)
         self.retriever = retriever or KnowledgeRetriever(self.repository, backend=resolved_backend)
         self.observation_analytics = observation_analytics or DecisionGuidanceObservationAnalyticsService(
             self.repository
