@@ -8,7 +8,16 @@
     },
     "dynamic": {
       "raw": [],
-      "processed": []
+      "processed": [
+        {
+          "name": "reflection_postmortem_nvda_2025_05_26_nvda_nvidia_post_earnings_momentum_setup_postmortem",
+          "path": "dynamic/processed/reflection_postmortem_nvda_2025_05_26_nvda_nvidia_post_earnings_momentum_setup_postmortem.json",
+          "title": "NVDA NVIDIA post-earnings momentum setup Postmortem",
+          "category": "decision_memory",
+          "updated_at": "2026-05-25T17:17:15Z",
+          "text_hash": "5a91d08d3aa396c5c1eb2018cf0e9effe5905a6bb2446ad96f2c640e0d09fa61"
+        }
+      ]
     }
   },
   "indexes": []
