@@ -1,1 +1,1 @@
-            
+"""Placeholder for analyst service tooling extensions."""
