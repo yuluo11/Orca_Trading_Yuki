@@ -10,6 +10,7 @@ from ...knowledge.repository import DatasetName, KnowledgeRepository
 from ...models import (
     DecisionGuidanceObservationRecord,
     GuidanceObservationPersistenceResult,
+    extract_decision_output_contract,
 )
 from .setup_taxonomy import (
     infer_primary_setup_label,
@@ -86,14 +87,15 @@ class DecisionGuidanceObservationService:
         applied_guidance: list[str] | None = None,
     ) -> DecisionGuidanceObservationRecord:
         """Build a processed-record payload describing one decision's guidance usage."""
+        contract = extract_decision_output_contract(decision_result)
         normalized_guidance = applied_guidance or self._normalize_string_list(
-            decision_result.get("applied_postmortem_guidance")
+            contract.get("applied_postmortem_guidance")
         )
         applied_setup_labels = self._normalize_string_list(
-            decision_result.get("applied_setup_labels")
+            contract.get("applied_setup_labels")
         )
         scenario_profile = self._extract_scenario_profile(decision_result)
-        reference_cases = decision_result.get("reference_cases", [])
+        reference_cases = contract.get("reference_cases", [])
         reference_titles = [
             str(item.get("title", "")).strip()
             for item in reference_cases
@@ -102,20 +104,20 @@ class DecisionGuidanceObservationService:
 
         subject = str(decision_result.get("subject", "")).strip() or "Unspecified decision subject"
         symbol = str(decision_result.get("symbol", "")).strip().upper()
-        recommendation = str(decision_result.get("recommendation", "")).strip().lower() or "keep_watch"
-        confidence = str(decision_result.get("confidence", "")).strip().lower() or "medium"
+        recommendation = str(contract.get("recommendation", "")).strip().lower() or "keep_watch"
+        confidence = str(contract.get("confidence", "")).strip().lower() or "medium"
         title = f"{symbol + ' ' if symbol else ''}{subject} Guidance Observation".strip()
 
         sections = [
-            f"Decision summary: {str(decision_result.get('decision_summary', '')).strip()}",
+            f"Decision summary: {str(contract.get('decision_summary', '')).strip()}",
             f"Recommendation: {recommendation}",
             f"Confidence: {confidence}",
             self._render_list_section("Applied postmortem guidance", normalized_guidance),
             self._render_list_section("Applied setup labels", applied_setup_labels),
-            self._render_text_section("Rationale", decision_result.get("rationale")),
+            self._render_text_section("Rationale", contract.get("rationale")),
             self._render_list_section("Reference cases", reference_titles),
             self._render_text_section(
-                "Case fit assessment", decision_result.get("case_fit_assessment")
+                "Case fit assessment", contract.get("case_fit_assessment")
             ),
         ]
         text = "\n\n".join(section for section in sections if section).strip()

@@ -214,14 +214,21 @@ class DecisionKnowledgeService(DecisionRankingMixin):
         selected_datasets = datasets or self.default_datasets
         query = self.build_query(task)
         scenario_profile = self.build_scenario_profile(task)
-        guidance_priors = self.collect_guidance_priors(task, datasets=selected_datasets)
+        records_by_dataset = self._load_records_by_dataset(selected_datasets)
+        guidance_priors = self.collect_guidance_priors(
+            task,
+            datasets=selected_datasets,
+            records_by_dataset=records_by_dataset,
+        )
         setup_outcome_priors = self.collect_setup_outcome_priors(
             task,
             datasets=selected_datasets,
+            records_by_dataset=records_by_dataset,
         )
         setup_recommendation_outcome_priors = self.collect_setup_recommendation_outcome_priors(
             task,
             datasets=selected_datasets,
+            records_by_dataset=records_by_dataset,
         )
         retrieval_context = self.retrieve_context(
             task,
@@ -336,6 +343,7 @@ class DecisionKnowledgeService(DecisionRankingMixin):
         task: "DecisionTask",
         *,
         datasets: tuple[DatasetName, ...],
+        records_by_dataset: dict[DatasetName, list[dict[str, Any]]] | None = None,
     ) -> GuidancePriorsSummary:
         """Summarize recurring guidance usage for the current symbol or setup."""
         scenario_profile = self.build_scenario_profile(task)
@@ -358,12 +366,14 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             symbol=task.symbol,
             scenario_profile=scenario_profile,
             top_n=3,
+            records_by_dataset=records_by_dataset,
         )
         if task.symbol and int(symbol_priors.get("total_observations", 0) or 0) == 0:
             symbol_priors = self.observation_analytics.summarize_guidance_priors(
                 datasets=datasets,
                 symbol=task.symbol,
                 top_n=3,
+                records_by_dataset=records_by_dataset,
             )
         if int(symbol_priors.get("total_observations", 0) or 0) >= 2:
             symbol_priors["scope"] = "symbol_setup"
@@ -373,6 +383,7 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             datasets=datasets,
             scenario_profile=scenario_profile,
             top_n=3,
+            records_by_dataset=records_by_dataset,
         )
         if int(setup_priors.get("total_observations", 0) or 0) > int(
             symbol_priors.get("total_observations", 0) or 0
@@ -391,6 +402,7 @@ class DecisionKnowledgeService(DecisionRankingMixin):
         task: "DecisionTask",
         *,
         datasets: tuple[DatasetName, ...],
+        records_by_dataset: dict[DatasetName, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         """Summarize setup-level historical outcomes for bounded reuse in decisions."""
         scenario_profile = self.build_scenario_profile(task)
@@ -416,12 +428,14 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             symbol=task.symbol,
             scenario_profile=scenario_profile,
             top_n=3,
+            records_by_dataset=records_by_dataset,
         )
         if task.symbol and int(symbol_priors.get("reviewed_observations", 0) or 0) == 0:
             symbol_priors = self.observation_analytics.summarize_setup_outcome_priors(
                 datasets=datasets,
                 symbol=task.symbol,
                 top_n=3,
+                records_by_dataset=records_by_dataset,
             )
         if int(symbol_priors.get("reviewed_observations", 0) or 0) >= 2:
             symbol_priors["scope"] = "symbol_setup"
@@ -431,6 +445,7 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             datasets=datasets,
             scenario_profile=scenario_profile,
             top_n=3,
+            records_by_dataset=records_by_dataset,
         )
         if int(setup_priors.get("reviewed_observations", 0) or 0) > int(
             symbol_priors.get("reviewed_observations", 0) or 0
@@ -449,6 +464,7 @@ class DecisionKnowledgeService(DecisionRankingMixin):
         task: "DecisionTask",
         *,
         datasets: tuple[DatasetName, ...],
+        records_by_dataset: dict[DatasetName, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         """Summarize recommendation-to-outcome patterns for the current setup."""
         scenario_profile = self.build_scenario_profile(task)
@@ -469,12 +485,14 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             symbol=task.symbol,
             scenario_profile=scenario_profile,
             top_n=5,
+            records_by_dataset=records_by_dataset,
         )
         if task.symbol and int(symbol_priors.get("total_records", 0) or 0) == 0:
             symbol_priors = self.observation_analytics.summarize_setup_recommendation_outcomes(
                 datasets=datasets,
                 symbol=task.symbol,
                 top_n=5,
+                records_by_dataset=records_by_dataset,
             )
         if int(symbol_priors.get("total_records", 0) or 0) >= 2:
             symbol_priors["scope"] = "symbol_setup"
@@ -484,6 +502,7 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             datasets=datasets,
             scenario_profile=scenario_profile,
             top_n=5,
+            records_by_dataset=records_by_dataset,
         )
         if int(setup_priors.get("total_records", 0) or 0) > int(
             symbol_priors.get("total_records", 0) or 0
@@ -496,6 +515,16 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             return symbol_priors
 
         return default_empty
+
+    def _load_records_by_dataset(
+        self,
+        datasets: tuple[DatasetName, ...],
+    ) -> dict[DatasetName, list[dict[str, Any]]]:
+        """Load processed records once per dataset for prior analytics reuse."""
+        return {
+            dataset: self.repository.load_all_processed_records(dataset)
+            for dataset in datasets
+        }
 
     def build_excerpt(self, text: str, *, limit: int = 280) -> str:
         """Return a compact evidence excerpt suitable for prompts."""
@@ -591,4 +620,3 @@ class DecisionKnowledgeService(DecisionRankingMixin):
             seen_keys.add(key)
             deduped.append(document)
         return deduped
-

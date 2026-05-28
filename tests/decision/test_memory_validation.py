@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
 
 from backend.src.agents.decision.base_agent import DecisionTask
 from backend.src.knowledge.ingest import KnowledgeIngestor
@@ -485,6 +486,71 @@ class DecisionMemoryValidationTests(unittest.TestCase):
                     "recommendation"
                 ],
             )
+
+    def test_analyze_reuses_loaded_records_for_prior_analytics(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            self._initialize_repository(repository)
+            ingestor = KnowledgeIngestor(repository)
+            ingestor.ingest_text(
+                "dynamic",
+                "nvda_event_setup_prior",
+                "A postmortem showing an event-driven rebound that failed after weak confirmation.",
+                metadata={
+                    "source": "internal_reflection",
+                    "source_type": "internal",
+                    "title": "NVDA Event Setup Prior",
+                    "category": "decision_memory",
+                    "memory_type": "decision_postmortem",
+                    "symbol": "NVDA",
+                    "subject": "NVIDIA momentum rebound review",
+                    "topic": "decision-memory",
+                    "recommendation": "keep_watch",
+                    "confidence": "medium",
+                    "market_regime": "event_driven",
+                    "analyst_alignment": "mixed",
+                    "setup_labels": ["event_momentum"],
+                    "primary_setup_label": "event_momentum",
+                    "signal_tags": ["momentum", "news_catalyst"],
+                    "risk_tags": ["event_fade"],
+                    "timing_tags": ["short_term"],
+                    "outcome_label": "failed",
+                    "quality_score": 0.8,
+                    "dataset": "dynamic",
+                },
+            )
+            service = DecisionKnowledgeService(
+                repository=repository,
+                retriever=FakeRetriever([]),
+                backend=object(),
+            )
+            task = DecisionTask(
+                subject="NVIDIA momentum rebound review",
+                symbol="NVDA",
+                overall_summary="Catalyst stayed active but the rebound looked fragile.",
+                overall_confidence="medium",
+                key_signals=["momentum is still active"],
+                portfolio_risks=["event fade risk is rising"],
+                cross_analyst_observations=["Signals are constructive but timing looks stretched"],
+                portfolio_context={
+                    "cash_pct": 9,
+                    "positions": [],
+                },
+            )
+
+            with patch.object(
+                repository,
+                "load_all_processed_records",
+                wraps=repository.load_all_processed_records,
+            ) as load_records:
+                service.analyze(task)
+
+            dynamic_calls = [
+                call
+                for call in load_records.call_args_list
+                if call.args == ("dynamic",)
+            ]
+            self.assertEqual(1, len(dynamic_calls))
 
     def test_guidance_priors_lightly_boost_aligned_documents_in_retrieval(self) -> None:
         with TemporaryDirectory() as tmpdir:

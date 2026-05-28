@@ -141,6 +141,82 @@ class DecisionAdvisoryAgentTests(unittest.TestCase):
         self.assertIn("measured", result["timing_decision"].lower())
         self.assertIn("current cash is about 16.0%", " ".join(result["action_conditions"]).lower())
 
+    def test_fallback_timing_uses_canonical_scenario_profile_from_service(self) -> None:
+        agent = BaseDecisionAgent(
+            knowledge_service=type(
+                "ScenarioAwareDecisionKnowledgeService",
+                (),
+                {
+                    "agent_name": "decision_advisory",
+                    "build_scenario_profile": lambda self, task: {
+                        "market_regime": "event_driven",
+                        "timing_tags": ["near_local_high"],
+                    },
+                    "analyze": lambda self, task, **kwargs: {
+                        "query": task.subject,
+                        "scenario_profile": {
+                            "market_regime": "event_driven",
+                            "timing_tags": ["near_local_high"],
+                        },
+                        "document_count": 0,
+                        "validation_summary": {
+                            "total_candidates": 0,
+                            "valid_candidates": 0,
+                            "invalid_candidates": 0,
+                            "warning_candidates": 0,
+                            "valid_warning_candidates": 0,
+                            "invalid_warning_candidates": 0,
+                            "invalid_examples": [],
+                            "warning_examples": [],
+                        },
+                        "documents": [],
+                        "evidence": [],
+                        "postmortem_lessons": [],
+                        "guidance_priors": {
+                            "symbol": task.symbol,
+                            "total_observations": 0,
+                            "top_guidance": [],
+                            "recommendation_breakdown": [],
+                            "top_reference_cases": [],
+                            "summary": "",
+                        },
+                        "setup_outcome_priors": {
+                            "symbol": task.symbol,
+                            "reviewed_observations": 0,
+                            "outcome_breakdown": [],
+                            "recommendation_breakdown": [],
+                            "outcome_bias": "mixed",
+                            "summary": "",
+                        },
+                        "setup_recommendation_outcome_priors": {
+                            "symbol": task.symbol,
+                            "total_records": 0,
+                            "recommendation_outcomes": [],
+                            "summary": "",
+                        },
+                    },
+                },
+            )()
+        )
+        task = DecisionTask(
+            subject="NVIDIA constructive reset",
+            symbol="NVDA",
+            overall_summary="Catalyst and trend are constructive.",
+            overall_confidence="high",
+            key_signals=["news catalyst remains active"],
+            portfolio_risks=["valuation risk remains present"],
+            cross_analyst_observations=["Signals are constructive and aligned"],
+            portfolio_context={
+                "cash_pct": 16,
+                "max_single_name_pct": 10,
+                "positions": [],
+            },
+        )
+
+        result = agent.invoke(task)
+
+        self.assertIn("extended", result["timing_decision"].lower())
+
     def test_low_cash_without_position_stays_cautious(self) -> None:
         task = DecisionTask(
             subject="NVIDIA constructive reset",

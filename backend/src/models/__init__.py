@@ -2,10 +2,15 @@
 
 from .analyst import AnalystOrchestrationResult, AnalystResult
 from .decision import (
+    ALLOWED_DECISION_CONFIDENCE,
+    ALLOWED_DECISION_RECOMMENDATIONS,
     DecisionContext,
     DecisionOutput,
     DecisionReferenceCase,
     MemoryPersistenceAssessment,
+    decision_output_instruction_keys,
+    decision_output_schema,
+    extract_decision_output_contract,
 )
 from .memory import (
     DecisionMemoryMetadata,
@@ -43,6 +48,8 @@ __all__ = [
     "AnalystOrchestrationResult",
     "AnalystResult",
     "CountedLabel",
+    "ALLOWED_DECISION_CONFIDENCE",
+    "ALLOWED_DECISION_RECOMMENDATIONS",
     "DecisionContext",
     "DecisionOutput",
     "DecisionGuidanceObservationMetadata",
@@ -59,6 +66,9 @@ __all__ = [
     "GuidanceObservationSummary",
     "GuidancePriorsSummary",
     "MemoryPersistenceAssessment",
+    "decision_output_instruction_keys",
+    "decision_output_schema",
+    "extract_decision_output_contract",
     "CandidateMemorySeed",
     "DecisionRealizationResult",
     "ExecutionSummary",

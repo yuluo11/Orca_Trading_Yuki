@@ -8,18 +8,16 @@ from typing import Any, Protocol, TypedDict
 
 from ...knowledge.repository import DatasetName
 from ...llm.client import LLMClient, LLMRunnable, ensure_llm_client
-from ...models import AnalystOrchestrationResult, AnalystResult, DecisionOutput
+from ...models import (
+    ALLOWED_DECISION_RECOMMENDATIONS,
+    AnalystOrchestrationResult,
+    AnalystResult,
+    DecisionOutput,
+    decision_output_instruction_keys,
+    decision_output_schema as shared_decision_output_schema,
+)
 from ...services.decision.memory import DecisionKnowledgeService
 from ...services.decision.setup_taxonomy import infer_setup_labels
-
-ALLOWED_RECOMMENDATIONS = {
-    "consider_buy",
-    "consider_reduce",
-    "hold",
-    "keep_watch",
-    "no_trade",
-}
-ALLOWED_CONFIDENCE = {"low", "medium", "high"}
 
 
 def _dedupe_preserve_order(values: list[str]) -> list[str]:
@@ -274,11 +272,8 @@ class BaseDecisionAgent(DecisionFallbackMixin):
             "analysis": self.build_analysis_payload(task),
             "decision_memory": self.build_decision_memory_payload(decision_context),
             "instructions": (
-                "Return a JSON object with keys: decision_summary, recommendation, "
-                "portfolio_context_used, portfolio_context_summary, position_impact, "
-                "timing_decision, action_conditions, no_action_reasons, aggregated_risks, "
-                "rationale, confidence, reference_cases, case_fit_assessment, "
-                "applied_postmortem_guidance, and applied_setup_labels. This is advisory only "
+                f"Return a JSON object with keys: {decision_output_instruction_keys()}. "
+                "This is advisory only "
                 "and must not imply trade execution. Use portfolio context when it is provided, "
                 "use scenario fit rather than raw similarity when discussing reference cases, "
                 "and incorporate any retrieved postmortem lessons as bounded future-risk "
@@ -385,7 +380,11 @@ class BaseDecisionAgent(DecisionFallbackMixin):
         if not aggregated_risks:
             aggregated_risks = ["Current analyst evidence does not yet support a stronger action."]
         position_impact = self._fallback_position_impact(task, recommendation)
-        timing_decision = self._fallback_timing_decision(task, recommendation)
+        timing_decision = self._fallback_timing_decision(
+            task,
+            recommendation,
+            decision_context=decision_context,
+        )
         action_conditions = self._fallback_action_conditions(task, recommendation)
         no_action_reasons = self._fallback_no_action_reasons(task, recommendation)
         postmortem_lessons = self._fallback_postmortem_lessons(decision_context)
@@ -462,28 +461,25 @@ class BaseDecisionAgent(DecisionFallbackMixin):
 
         case_fit_assessment = self._fallback_case_fit_assessment(reference_cases)
 
-        return {
-            "subject": task.subject,
-            "symbol": task.symbol,
-            "trade_date": task.trade_date,
-            "decision_summary": decision_summary,
-            "recommendation": recommendation,
-            "portfolio_context_used": bool(task.portfolio_context),
-            "portfolio_context_summary": portfolio_context_summary,
-            "position_impact": position_impact,
-            "timing_decision": timing_decision,
-            "action_conditions": action_conditions,
-            "no_action_reasons": no_action_reasons,
-            "aggregated_risks": aggregated_risks,
-            "rationale": rationale,
-            "confidence": confidence,
-            "reference_cases": reference_cases,
-            "case_fit_assessment": case_fit_assessment,
-            "applied_postmortem_guidance": applied_postmortem_guidance,
-            "applied_setup_labels": applied_setup_labels,
-            "prompt": prompt,
-            "decision_context": decision_context,
-        }
+        return self._assemble_decision_output(
+            task,
+            prompt=prompt,
+            decision_context=decision_context,
+            decision_summary=decision_summary,
+            portfolio_context_summary=portfolio_context_summary,
+            position_impact=position_impact,
+            timing_decision=timing_decision,
+            action_conditions=action_conditions,
+            no_action_reasons=no_action_reasons,
+            aggregated_risks=aggregated_risks,
+            rationale=rationale,
+            confidence=confidence,
+            reference_cases=reference_cases,
+            case_fit_assessment=case_fit_assessment,
+            applied_postmortem_guidance=applied_postmortem_guidance,
+            applied_setup_labels=applied_setup_labels,
+            recommendation=recommendation,
+        )
 
     def normalize_llm_result(
         self,
@@ -495,99 +491,95 @@ class BaseDecisionAgent(DecisionFallbackMixin):
     ) -> dict[str, Any]:
         """Normalize LLM output into the shared decision payload shape."""
         fallback_result = self._synthesize_fallback(task, decision_context, prompt)
-        recommendation = str(llm_result.get("recommendation", fallback_result["recommendation"]))
-        recommendation = recommendation.strip().lower()
-        if recommendation not in ALLOWED_RECOMMENDATIONS:
+        recommendation = str(llm_result.get("recommendation", fallback_result["recommendation"])).strip().lower()
+        if recommendation not in ALLOWED_DECISION_RECOMMENDATIONS:
             recommendation = fallback_result["recommendation"]
 
-        return {
-            "subject": task.subject,
-            "symbol": task.symbol,
-            "trade_date": task.trade_date,
-            "decision_summary": str(
+        return self._assemble_decision_output(
+            task,
+            prompt=prompt,
+            decision_context=decision_context,
+            decision_summary=str(
                 llm_result.get("decision_summary", fallback_result["decision_summary"])
             ).strip()
             or fallback_result["decision_summary"],
-            "recommendation": recommendation,
-            "portfolio_context_used": bool(task.portfolio_context),
-            "portfolio_context_summary": str(
+            portfolio_context_summary=str(
                 llm_result.get(
                     "portfolio_context_summary",
                     fallback_result["portfolio_context_summary"],
                 )
             ).strip()
             or fallback_result["portfolio_context_summary"],
-            "position_impact": str(
+            position_impact=str(
                 llm_result.get("position_impact", fallback_result["position_impact"])
             ).strip()
             or fallback_result["position_impact"],
-            "timing_decision": str(
+            timing_decision=str(
                 llm_result.get("timing_decision", fallback_result["timing_decision"])
             ).strip()
             or fallback_result["timing_decision"],
-            "action_conditions": self._normalize_string_list(
+            action_conditions=self._normalize_string_list(
                 llm_result.get("action_conditions"),
                 fallback=fallback_result["action_conditions"],
             ),
-            "no_action_reasons": self._normalize_string_list(
+            no_action_reasons=self._normalize_string_list(
                 llm_result.get("no_action_reasons"),
                 fallback=fallback_result["no_action_reasons"],
             ),
-            "aggregated_risks": self._normalize_string_list(
+            aggregated_risks=self._normalize_string_list(
                 llm_result.get("aggregated_risks"),
                 fallback=fallback_result["aggregated_risks"],
             ),
-            "rationale": str(llm_result.get("rationale", fallback_result["rationale"])).strip()
+            rationale=str(llm_result.get("rationale", fallback_result["rationale"])).strip()
             or fallback_result["rationale"],
-            "confidence": self._normalize_confidence(
+            confidence=self._normalize_confidence(
                 llm_result.get("confidence", fallback_result["confidence"])
             ),
-            "reference_cases": self._normalize_reference_cases(
+            reference_cases=self._normalize_reference_cases(
                 llm_result.get("reference_cases"),
                 fallback=fallback_result["reference_cases"],
             ),
-            "case_fit_assessment": str(
+            case_fit_assessment=str(
                 llm_result.get("case_fit_assessment", fallback_result["case_fit_assessment"])
             ).strip()
             or fallback_result["case_fit_assessment"],
-            "applied_postmortem_guidance": self._normalize_string_list(
+            applied_postmortem_guidance=self._normalize_string_list(
                 llm_result.get("applied_postmortem_guidance"),
                 fallback=fallback_result["applied_postmortem_guidance"],
             ),
-            "applied_setup_labels": self._normalize_string_list(
+            applied_setup_labels=self._normalize_string_list(
                 llm_result.get("applied_setup_labels"),
                 fallback=fallback_result["applied_setup_labels"],
             ),
-            "prompt": prompt,
-            "decision_context": decision_context,
-            "raw_model_output": llm_result,
-        }
+            raw_model_output=llm_result,
+            recommendation=recommendation,
+        )
 
     def decision_output_schema(self) -> dict[str, Any]:
         """Return the target structured schema for decision advisory outputs."""
+        return shared_decision_output_schema()
+
+    def _assemble_decision_output(
+        self,
+        task: DecisionTask,
+        *,
+        recommendation: str,
+        prompt: str,
+        decision_context: dict[str, Any],
+        raw_model_output: dict[str, Any] | None = None,
+        **fields: Any,
+    ) -> DecisionOutput:
+        """Build the shared decision output shape from one canonical constructor."""
         return {
-            "decision_summary": "string",
-            "recommendation": "consider_buy|consider_reduce|hold|keep_watch|no_trade",
-            "portfolio_context_used": "boolean",
-            "portfolio_context_summary": "string",
-            "position_impact": "string",
-            "timing_decision": "string",
-            "action_conditions": ["string"],
-            "no_action_reasons": ["string"],
-            "aggregated_risks": ["string"],
-            "rationale": "string",
-            "confidence": "low|medium|high",
-            "reference_cases": [
-                {
-                    "title": "string",
-                    "memory_type": "decision_case|decision_postmortem|external_reference_decision",
-                    "fit": "high|medium|low",
-                    "why_relevant": "string",
-                }
-            ],
-            "case_fit_assessment": "string",
-            "applied_postmortem_guidance": ["string"],
-            "applied_setup_labels": ["string"],
+            "subject": task.subject,
+            "symbol": task.symbol,
+            "trade_date": task.trade_date,
+            "recommendation": recommendation,
+            "portfolio_context_used": bool(task.portfolio_context),
+            "prompt": prompt,
+            "decision_context": decision_context,
+            **fields,
+            **({"raw_model_output": raw_model_output} if raw_model_output is not None else {}),
         }
 
     def build_agent_message(self, result: dict[str, Any]) -> Any:
@@ -602,4 +594,3 @@ class BaseDecisionAgent(DecisionFallbackMixin):
                 "content": content,
             }
         return AIMessage(content=content, name=self.agent_name)
-

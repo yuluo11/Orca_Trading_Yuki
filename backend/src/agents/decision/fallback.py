@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ...models import ALLOWED_DECISION_CONFIDENCE
 from ...services.decision.setup_taxonomy import infer_setup_labels
-from .base_agent import ALLOWED_CONFIDENCE
 
 if TYPE_CHECKING:
     from .base_agent import DecisionTask
@@ -113,9 +113,11 @@ class DecisionFallbackMixin:
         self,
         task: DecisionTask,
         recommendation: str,
+        *,
+        decision_context: dict[str, Any] | None = None,
     ) -> str:
         """Provide a bounded view on timing rather than an execution instruction."""
-        scenario_profile = self._scenario_profile_from_task(task)
+        scenario_profile = self._scenario_profile_for_task(task, decision_context=decision_context)
         cash_pct = self._extract_percent((task.portfolio_context or {}).get("cash_pct"))
         if recommendation == "consider_reduce":
             return "Current conditions support reviewing exposure now rather than waiting for a stronger risk signal."
@@ -526,7 +528,7 @@ class DecisionFallbackMixin:
     def _normalize_confidence(self, value: Any) -> str:
         """Normalize confidence labels into the supported set."""
         confidence = str(value or "low").strip().lower()
-        if confidence not in ALLOWED_CONFIDENCE:
+        if confidence not in ALLOWED_DECISION_CONFIDENCE:
             return "low"
         return confidence
 
@@ -609,8 +611,29 @@ class DecisionFallbackMixin:
             summary_parts.append(f"max_single_name_pct={max_weight:.1f}")
         return ", ".join(summary_parts)
 
-    def _scenario_profile_from_task(self, task: DecisionTask) -> dict[str, Any]:
-        """Infer lightweight timing cues directly from the task."""
+    def _scenario_profile_for_task(
+        self,
+        task: DecisionTask,
+        *,
+        decision_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Resolve the canonical scenario profile, reusing retrieval context when possible."""
+        if isinstance(decision_context, dict):
+            scenario_profile = decision_context.get("scenario_profile")
+            if isinstance(scenario_profile, dict) and scenario_profile:
+                return scenario_profile
+
+        knowledge_service = getattr(self, "knowledge_service", None)
+        build_scenario_profile = getattr(knowledge_service, "build_scenario_profile", None)
+        if callable(build_scenario_profile):
+            scenario_profile = build_scenario_profile(task)
+            if isinstance(scenario_profile, dict) and scenario_profile:
+                return scenario_profile
+
+        return self._fallback_scenario_profile_from_task(task)
+
+    def _fallback_scenario_profile_from_task(self, task: DecisionTask) -> dict[str, Any]:
+        """Infer lightweight timing cues directly from the task when no canonical profile exists."""
         combined = " ".join(
             [task.subject, task.extra_context or "", task.overall_summary, *task.cross_analyst_observations]
         ).lower()

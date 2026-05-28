@@ -34,9 +34,10 @@ class DecisionGuidanceObservationAnalyticsService:
         setup_label: str | None = None,
         scenario_profile: dict[str, Any] | None = None,
         top_n: int = 5,
+        records: list[dict[str, Any]] | None = None,
     ) -> GuidanceObservationSummary:
         """Build a compact summary over persisted decision-guidance observations."""
-        records = self.repository.load_all_processed_records(dataset)
+        records = records if records is not None else self.repository.load_all_processed_records(dataset)
         filtered_records = [
             record
             for record in records
@@ -97,6 +98,7 @@ class DecisionGuidanceObservationAnalyticsService:
         recommendation: str | None = None,
         scenario_profile: dict[str, Any] | None = None,
         top_n: int = 3,
+        records_by_dataset: dict[DatasetName, list[dict[str, Any]]] | None = None,
     ) -> GuidancePriorsSummary:
         """Build a compact guidance-prior summary for reuse in future decisions."""
         selected_datasets = tuple(datasets or ("dynamic",))
@@ -118,6 +120,7 @@ class DecisionGuidanceObservationAnalyticsService:
                 setup_label=primary_setup_label,
                 scenario_profile=scenario_profile,
                 top_n=max(top_n * 2, 5),
+                records=(records_by_dataset or {}).get(dataset),
             )
             total_observations += int(summary.get("total_observations", 0) or 0)
             for item in summary.get("top_guidance", []):
@@ -184,6 +187,7 @@ class DecisionGuidanceObservationAnalyticsService:
         symbol: str | None = None,
         scenario_profile: dict[str, Any] | None = None,
         top_n: int = 3,
+        records_by_dataset: dict[DatasetName, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         """Summarize historical setup outcomes from persisted decision-memory records."""
         selected_datasets = tuple(datasets or ("dynamic",))
@@ -196,7 +200,9 @@ class DecisionGuidanceObservationAnalyticsService:
         setup_labels = infer_setup_labels(scenario_profile)
         primary_setup_label = setup_labels[0] if setup_labels else None
         for dataset in selected_datasets:
-            records = self.repository.load_all_processed_records(dataset)
+            records = (records_by_dataset or {}).get(dataset)
+            if records is None:
+                records = self.repository.load_all_processed_records(dataset)
             for record in records:
                 if not self._is_decision_memory_record(record):
                     continue
@@ -268,6 +274,7 @@ class DecisionGuidanceObservationAnalyticsService:
         symbol: str | None = None,
         scenario_profile: dict[str, Any] | None = None,
         top_n: int = 5,
+        records_by_dataset: dict[DatasetName, list[dict[str, Any]]] | None = None,
     ) -> dict[str, Any]:
         """Summarize how recommendations have historically resolved within one setup."""
         selected_datasets = tuple(datasets or ("dynamic",))
@@ -278,7 +285,9 @@ class DecisionGuidanceObservationAnalyticsService:
         setup_labels = infer_setup_labels(scenario_profile)
         primary_setup_label = setup_labels[0] if setup_labels else None
         for dataset in selected_datasets:
-            records = self.repository.load_all_processed_records(dataset)
+            records = (records_by_dataset or {}).get(dataset)
+            if records is None:
+                records = self.repository.load_all_processed_records(dataset)
             for record in records:
                 if not self._is_decision_memory_record(record):
                     continue
