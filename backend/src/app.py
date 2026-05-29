@@ -6,8 +6,6 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from .config import build_app_config
-from .knowledge.collector_service import KnowledgeCollectorService, WebPageCollectionResult
-from .knowledge.collectors.web_page import HtmlFetcher
 from .knowledge.repository import DatasetName, KnowledgeRepository
 from .llm.client import LLMClient, LLMRunnable, ensure_llm_client
 from .llm import build_configured_llm_client
@@ -281,38 +279,6 @@ def build_decision_guidance_observation_analytics_service(
 ) -> DecisionGuidanceObservationAnalyticsService:
     """Build the decision guidance observation analytics service."""
     return DecisionGuidanceObservationAnalyticsService(repository=repository)
-
-
-def build_knowledge_collector_service(
-    *,
-    repository: KnowledgeRepository | None = None,
-) -> KnowledgeCollectorService:
-    """Build the knowledge collector service used by URL and manual collection flows."""
-    return KnowledgeCollectorService(repository=repository)
-
-
-def collect_web_page_knowledge(
-    *,
-    url: str,
-    persist: bool = False,
-    dataset: DatasetName = "dynamic",
-    category: str = "web_page",
-    symbol: str | None = None,
-    topic: str | None = None,
-    repository: KnowledgeRepository | None = None,
-    fetcher: HtmlFetcher | None = None,
-) -> WebPageCollectionResult:
-    """Collect a user-provided URL as temporary context or dynamic knowledge."""
-    service = build_knowledge_collector_service(repository=repository)
-    return service.collect_web_page(
-        url,
-        persist=persist,
-        dataset=dataset,
-        category=category,
-        symbol=symbol,
-        topic=topic,
-        fetcher=fetcher,
-    )
 
 
 def run_analyst(
