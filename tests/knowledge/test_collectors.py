@@ -4,17 +4,52 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
+from backend.src.knowledge.collector_service import KnowledgeCollectorService
 from backend.src.knowledge.collectors import (
     CollectedKnowledgeItem,
     ManualKnowledgeCollector,
+    RSSNewsCollector,
+    WebPageCollectionError,
     WebPageCollector,
     extract_web_page_text,
     ingest_collected_items,
+    parse_feed_items,
 )
-from backend.src.knowledge.collector_service import KnowledgeCollectorService
 from backend.src.knowledge.ingest import KnowledgeIngestor
 from backend.src.knowledge.policy import KnowledgePolicy
 from backend.src.knowledge.repository import KnowledgeRepository
+
+
+RSS_XML = """<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Market Feed</title>
+    <item>
+      <title>NVDA rebound faces fade risk</title>
+      <link>https://example.com/nvda-fade</link>
+      <description>Momentum improved, but event fade risk remains active.</description>
+      <pubDate>Mon, 18 May 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>TSLA volume expands</title>
+      <link>https://example.com/tsla-volume</link>
+      <description>Volume confirmation improved.</description>
+    </item>
+  </channel>
+</rss>
+"""
+
+
+ATOM_XML = """<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>Macro pressure cools risk appetite</title>
+    <link href="https://example.com/macro-risk" />
+    <summary>Rates pressure weighed on growth exposure.</summary>
+    <updated>2026-05-18T09:00:00Z</updated>
+  </entry>
+</feed>
+"""
 
 
 class KnowledgeCollectorTests(unittest.TestCase):
@@ -90,93 +125,99 @@ class KnowledgeCollectorTests(unittest.TestCase):
         self.assertIn("fade risk", item.text)
         self.assertNotIn("navigation", item.text.lower())
 
-    def test_web_page_collector_can_feed_existing_ingest_pipeline(self) -> None:
-        html = """
-        <html>
-          <head><title>NVIDIA event update</title></head>
-          <body>
-            <article>
-              <p>NVIDIA event momentum remains active while fade risk is still present.</p>
-            </article>
-          </body>
-        </html>
-        """
-        with TemporaryDirectory() as tmpdir:
-            repository = KnowledgeRepository(data_root=Path(tmpdir))
-            ingestor = KnowledgeIngestor(repository)
-            collector = WebPageCollector(
-                "https://example.com/nvda-event-update",
-                symbol="NVDA",
-                category="news",
-                fetcher=lambda url: html,
-            )
+    def test_web_page_collector_rejects_non_http_urls(self) -> None:
+        collector = WebPageCollector("file:///tmp/local.html", fetcher=lambda url: "<html />")
 
-            summary = ingest_collected_items(ingestor, collector.collect())
-            processed_paths = repository.list_processed_record_paths("dynamic")
-            record = repository.load_processed_record("dynamic", processed_paths[0].stem)
+        with self.assertRaises(WebPageCollectionError):
+            collector.collect()
 
-        self.assertEqual(1, summary.imported_count)
-        self.assertEqual("https://example.com/nvda-event-update", record["metadata"]["source_url"])
-        self.assertEqual("NVDA", record["metadata"]["symbol"])
-
-    def test_extract_web_page_text_falls_back_to_readable_body_text(self) -> None:
+    def test_extract_web_page_text_returns_title_and_body(self) -> None:
         extracted = extract_web_page_text(
-            "<html><body><p>Readable text should survive extraction for downstream ingest.</p></body></html>"
+            "<html><title>Setup</title><body><h1>Headline</h1><p>Body text.</p></body></html>"
         )
 
-        self.assertEqual("", extracted.title)
-        self.assertIn("Readable text should survive", extracted.text)
+        self.assertEqual("Setup", extracted.title)
+        self.assertIn("Headline Body text.", extracted.text)
+
+    def test_rss_news_collector_parses_feed_items(self) -> None:
+        collector = RSSNewsCollector(
+            "https://example.com/feed.xml",
+            symbol="NVDA",
+            topic="semiconductor catalyst",
+            max_items=1,
+            fetcher=lambda url: RSS_XML,
+        )
+
+        items = collector.collect()
+
+        self.assertEqual(1, len(items))
+        self.assertEqual("dynamic", items[0].dataset)
+        self.assertIn("fade risk", items[0].text)
+        self.assertEqual("news", items[0].metadata["category"])
+        self.assertEqual("NVDA", items[0].metadata["symbol"])
+        self.assertEqual("https://example.com/nvda-fade", items[0].metadata["source_url"])
+
+    def test_parse_feed_items_supports_atom_entries(self) -> None:
+        items = parse_feed_items(ATOM_XML)
+
+        self.assertEqual(1, len(items))
+        self.assertEqual("Macro pressure cools risk appetite", items[0]["title"])
+        self.assertEqual("https://example.com/macro-risk", items[0]["link"])
+        self.assertIn("Rates pressure", items[0]["summary"])
 
     def test_collector_service_can_return_web_page_as_context_only(self) -> None:
-        html = """
-        <html>
-          <head><title>Context only update</title></head>
-          <body><article><p>Temporary context should be available without persistence.</p></article></body>
-        </html>
-        """
         with TemporaryDirectory() as tmpdir:
             repository = KnowledgeRepository(data_root=Path(tmpdir))
             service = KnowledgeCollectorService(repository=repository)
 
             result = service.collect_web_page(
                 "https://example.com/context-only",
-                fetcher=lambda url: html,
+                fetcher=lambda url: (
+                    "<html><head><title>Context only update</title></head>"
+                    "<body><article><p>Temporary context should be available without persistence.</p>"
+                    "</article></body></html>"
+                ),
             )
-            processed_paths = repository.list_processed_record_paths("dynamic")
 
-        self.assertFalse(result.persisted)
-        self.assertEqual("context_only", result.mode)
-        self.assertEqual(1, len(result.items))
-        self.assertEqual([], processed_paths)
-        self.assertIn("Context only update", result.as_extra_context())
-        self.assertIn("Temporary context", result.as_extra_context())
+            self.assertFalse(result.persisted)
+            self.assertEqual("context_only", result.mode)
+            self.assertEqual([], repository.list_processed_record_paths("dynamic"))
+            self.assertIn("Temporary context", result.as_extra_context())
 
-    def test_collector_service_can_persist_web_page_to_dynamic_knowledge(self) -> None:
-        html = """
-        <html>
-          <head><title>Persisted URL update</title></head>
-          <body><article><p>Persisted URL context should become dynamic knowledge.</p></article></body>
-        </html>
-        """
+    def test_collector_service_can_persist_web_page(self) -> None:
         with TemporaryDirectory() as tmpdir:
             repository = KnowledgeRepository(data_root=Path(tmpdir))
             service = KnowledgeCollectorService(repository=repository)
 
             result = service.collect_web_page(
-                "https://example.com/persisted-url-update",
+                "https://example.com/nvda",
                 persist=True,
                 symbol="NVDA",
-                category="news",
-                fetcher=lambda url: html,
+                fetcher=lambda url: "<html><title>NVDA</title><body>Dynamic context.</body></html>",
             )
-            processed_paths = repository.list_processed_record_paths("dynamic")
-            record = repository.load_processed_record("dynamic", processed_paths[0].stem)
 
-        self.assertTrue(result.persisted)
-        self.assertEqual("persist", result.mode)
-        self.assertEqual(1, result.ingest_summary.imported_count)
-        self.assertEqual("NVDA", record["metadata"]["symbol"])
-        self.assertEqual("news", record["metadata"]["category"])
+            self.assertTrue(result.persisted)
+            self.assertEqual(1, result.ingest_summary.imported_count)
+            self.assertEqual(1, len(repository.load_all_processed_records("dynamic")))
+            self.assertIn("Dynamic context.", result.as_extra_context())
+
+    def test_collector_service_can_persist_rss_feed(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            service = KnowledgeCollectorService(repository=repository)
+
+            result = service.collect_rss_feed(
+                "https://example.com/feed.xml",
+                persist=True,
+                symbol="NVDA",
+                max_items=2,
+                fetcher=lambda url: RSS_XML,
+            )
+
+            self.assertTrue(result.persisted)
+            self.assertEqual(2, result.ingest_summary.imported_count)
+            self.assertEqual(2, len(repository.load_all_processed_records("dynamic")))
+            self.assertIn("NVDA rebound", result.as_extra_context())
 
     def test_collection_result_context_can_be_limited_for_prompt_usage(self) -> None:
         result = KnowledgeCollectorService().collect_web_page(

@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from .config import build_app_config
-from .knowledge.collector_service import KnowledgeCollectorService, WebPageCollectionResult
+from .knowledge.collector_service import (
+    KnowledgeCollectorService,
+    RSSFeedCollectionResult,
+    WebPageCollectionResult,
+)
 from .knowledge.collectors.web_page import HtmlFetcher
 from .knowledge.repository import DatasetName, KnowledgeRepository
 from .llm.client import LLMClient, LLMRunnable, ensure_llm_client
@@ -299,18 +303,44 @@ def collect_web_page_knowledge(
     category: str = "web_page",
     symbol: str | None = None,
     topic: str | None = None,
+    title: str | None = None,
     repository: KnowledgeRepository | None = None,
     fetcher: HtmlFetcher | None = None,
 ) -> WebPageCollectionResult:
     """Collect a user-provided URL as temporary context or dynamic knowledge."""
-    service = build_knowledge_collector_service(repository=repository)
-    return service.collect_web_page(
+    return build_knowledge_collector_service(repository=repository).collect_web_page(
         url,
         persist=persist,
         dataset=dataset,
         category=category,
         symbol=symbol,
         topic=topic,
+        title=title,
+        fetcher=fetcher,
+    )
+
+
+def collect_rss_feed_knowledge(
+    *,
+    feed_url: str,
+    persist: bool = False,
+    dataset: DatasetName = "dynamic",
+    category: str = "news",
+    symbol: str | None = None,
+    topic: str | None = None,
+    max_items: int = 10,
+    repository: KnowledgeRepository | None = None,
+    fetcher: HtmlFetcher | None = None,
+) -> RSSFeedCollectionResult:
+    """Collect RSS/Atom feed entries for immediate context or persistent knowledge."""
+    return build_knowledge_collector_service(repository=repository).collect_rss_feed(
+        feed_url,
+        persist=persist,
+        dataset=dataset,
+        category=category,
+        symbol=symbol,
+        topic=topic,
+        max_items=max_items,
         fetcher=fetcher,
     )
 
