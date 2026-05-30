@@ -14,6 +14,11 @@ from .collectors import (
 )
 from .ingest import BatchIngestSummary, KnowledgeIngestor
 from .repository import DatasetName, KnowledgeRepository
+from .source_governance import (
+    DEFAULT_DYNAMIC_SOURCE_GOVERNANCE,
+    DynamicSourceGovernancePolicy,
+    SourceGovernanceDecision,
+)
 
 CollectionMode = Literal["context_only", "persist"]
 
@@ -59,9 +64,11 @@ class KnowledgeCollectorService:
         self,
         repository: KnowledgeRepository | None = None,
         ingestor: KnowledgeIngestor | None = None,
+        source_policy: DynamicSourceGovernancePolicy | None = None,
     ) -> None:
         self.repository = repository or KnowledgeRepository()
         self.ingestor = ingestor or KnowledgeIngestor(self.repository)
+        self.source_policy = source_policy or DEFAULT_DYNAMIC_SOURCE_GOVERNANCE
 
     def collect_web_page(
         self,
@@ -76,16 +83,21 @@ class KnowledgeCollectorService:
         fetcher: HtmlFetcher | None = None,
     ) -> WebPageCollectionResult:
         """Collect a page either as extra context or as persisted knowledge."""
+        governance = self.source_policy.evaluate(
+            url,
+            source_type="web_page",
+            category=category,
+        )
         collector = WebPageCollector(
             url=url,
             dataset=dataset,
-            category=category,
+            category=governance.category,
             symbol=symbol,
             topic=topic,
             title=title,
             fetcher=fetcher,
         )
-        items = collector.collect()
+        items = self._apply_governance_metadata(collector.collect(), governance)
         if not persist:
             return WebPageCollectionResult(mode="context_only", items=items)
 
@@ -105,16 +117,25 @@ class KnowledgeCollectorService:
         fetcher: HtmlFetcher | None = None,
     ) -> RSSFeedCollectionResult:
         """Collect RSS/Atom entries either as context or persisted knowledge."""
+        governance = self.source_policy.evaluate(
+            feed_url,
+            source_type="rss_feed",
+            category=category,
+        )
+        effective_max_items = max_items
+        if governance.max_items_per_collect is not None:
+            effective_max_items = min(max_items, governance.max_items_per_collect)
+
         collector = RSSNewsCollector(
             feed_url=feed_url,
             dataset=dataset,
-            category=category,
+            category=governance.category,
             symbol=symbol,
             topic=topic,
-            max_items=max_items,
+            max_items=effective_max_items,
             fetcher=fetcher,
         )
-        items = collector.collect()
+        items = self._apply_governance_metadata(collector.collect(), governance)
         if not persist:
             return RSSFeedCollectionResult(mode="context_only", items=items)
 
@@ -136,6 +157,36 @@ class KnowledgeCollectorService:
             for item in items
         ]
         return ingest_collected_items(self.ingestor, normalized_items)
+
+    def _apply_governance_metadata(
+        self,
+        items: list[CollectedKnowledgeItem],
+        governance: SourceGovernanceDecision,
+    ) -> list[CollectedKnowledgeItem]:
+        """Attach source governance metadata to collected records."""
+        governed_items: list[CollectedKnowledgeItem] = []
+        governance_metadata = governance.metadata()
+        for item in items:
+            metadata = dict(item.metadata)
+            metadata.update(
+                {
+                    key: value
+                    for key, value in governance_metadata.items()
+                    if value is not None and value != ""
+                }
+            )
+            metadata["category"] = governance.category
+            metadata["reliability"] = governance.reliability
+            metadata["time_sensitivity"] = governance.time_sensitivity
+            governed_items.append(
+                CollectedKnowledgeItem(
+                    name=item.name,
+                    text=item.text,
+                    metadata=metadata,
+                    dataset=item.dataset,
+                )
+            )
+        return governed_items
 
 
 def render_collected_item_context(

@@ -13,6 +13,8 @@ from .knowledge.collector_service import (
 )
 from .knowledge.collectors.web_page import HtmlFetcher
 from .knowledge.repository import DatasetName, KnowledgeRepository
+from .knowledge.source_scheduler import DynamicKnowledgeCrawlScheduler
+from .knowledge.source_governance import DynamicSourceGovernancePolicy
 from .llm.client import LLMClient, LLMRunnable, ensure_llm_client
 from .llm import build_configured_llm_client
 from .models import (
@@ -290,9 +292,22 @@ def build_decision_guidance_observation_analytics_service(
 def build_knowledge_collector_service(
     *,
     repository: KnowledgeRepository | None = None,
+    source_policy: DynamicSourceGovernancePolicy | None = None,
 ) -> KnowledgeCollectorService:
     """Build the knowledge collector service used by URL and manual collection flows."""
-    return KnowledgeCollectorService(repository=repository)
+    return KnowledgeCollectorService(repository=repository, source_policy=source_policy)
+
+
+def build_dynamic_knowledge_scheduler(
+    *,
+    repository: KnowledgeRepository | None = None,
+    source_policy: DynamicSourceGovernancePolicy | None = None,
+) -> DynamicKnowledgeCrawlScheduler:
+    """Build the persistent dynamic knowledge crawl scheduler."""
+    return DynamicKnowledgeCrawlScheduler(
+        repository=repository,
+        source_policy=source_policy,
+    )
 
 
 def collect_web_page_knowledge(
@@ -306,9 +321,13 @@ def collect_web_page_knowledge(
     title: str | None = None,
     repository: KnowledgeRepository | None = None,
     fetcher: HtmlFetcher | None = None,
+    source_policy: DynamicSourceGovernancePolicy | None = None,
 ) -> WebPageCollectionResult:
     """Collect a user-provided URL as temporary context or dynamic knowledge."""
-    return build_knowledge_collector_service(repository=repository).collect_web_page(
+    return build_knowledge_collector_service(
+        repository=repository,
+        source_policy=source_policy,
+    ).collect_web_page(
         url,
         persist=persist,
         dataset=dataset,
@@ -331,9 +350,13 @@ def collect_rss_feed_knowledge(
     max_items: int = 10,
     repository: KnowledgeRepository | None = None,
     fetcher: HtmlFetcher | None = None,
+    source_policy: DynamicSourceGovernancePolicy | None = None,
 ) -> RSSFeedCollectionResult:
     """Collect RSS/Atom feed entries for immediate context or persistent knowledge."""
-    return build_knowledge_collector_service(repository=repository).collect_rss_feed(
+    return build_knowledge_collector_service(
+        repository=repository,
+        source_policy=source_policy,
+    ).collect_rss_feed(
         feed_url,
         persist=persist,
         dataset=dataset,

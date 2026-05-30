@@ -6,10 +6,32 @@ from .collector_service import (
     RSSFeedCollectionResult,
     WebPageCollectionResult,
 )
+from .source_governance import (
+    DEFAULT_DYNAMIC_SOURCE_GOVERNANCE,
+    DataSourceRule,
+    DynamicSourceGovernancePolicy,
+    SourceGovernanceDecision,
+    SourceGovernanceError,
+)
+from .source_scheduler import (
+    CrawlRunResult,
+    DynamicKnowledgeCrawlScheduler,
+    DynamicSourceScheduleStore,
+    ScheduledKnowledgeSource,
+)
 
 __all__ = [
     "CollectionMode",
+    "CrawlRunResult",
+    "DEFAULT_DYNAMIC_SOURCE_GOVERNANCE",
+    "DataSourceRule",
+    "DynamicKnowledgeCrawlScheduler",
+    "DynamicSourceScheduleStore",
+    "DynamicSourceGovernancePolicy",
     "KnowledgeCollectorService",
     "RSSFeedCollectionResult",
+    "ScheduledKnowledgeSource",
+    "SourceGovernanceDecision",
+    "SourceGovernanceError",
     "WebPageCollectionResult",
 ]
