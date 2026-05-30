@@ -1,15 +1,19 @@
 "use client";
 
-import { useGetRunDetails } from "@/lib/api/hooks";
+import { useGetRunDetails, useGetHistory } from "@/lib/api/hooks";
 import { AnalysisPreview } from "@/components/analysis/analysis-preview";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { use } from "react";
+import { RunSummary } from "@/components/runs/run-summary";
 
 export default function RunDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const id = resolvedParams.id;
-  const { data, isPending, error } = useGetRunDetails(id);
+  const { data: detailsData, isPending: isDetailsPending, error: detailsError } = useGetRunDetails(id);
+  const { data: historyData } = useGetHistory();
+
+  const currentRun = historyData?.find((run) => run.id === id);
 
   return (
     <main className="flex-1 w-full max-w-4xl mx-auto flex flex-col">
@@ -21,15 +25,15 @@ export default function RunDetailsPage({ params }: { params: Promise<{ id: strin
           <ArrowLeft className="w-4 h-4" />
           Back to Runs
         </Link>
-        <h2 className="text-2xl font-semibold">Run Details</h2>
-        <p className="text-sm text-zinc-400 mt-1">Review the complete analysis output for run <code className="bg-zinc-800 px-1 py-0.5 rounded text-zinc-300">{id}</code></p>
+
+        <RunSummary id={id} run={currentRun} />
       </div>
 
-      <div className="flex-1 min-h-[500px]">
+      <div className="flex-1 min-h-[500px] mt-4">
         <AnalysisPreview 
-          data={data}
-          isPending={isPending}
-          error={error}
+          data={detailsData}
+          isPending={isDetailsPending}
+          error={detailsError}
         />
       </div>
     </main>
