@@ -65,6 +65,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only report due sources without fetching them.",
     )
+    run_due.add_argument(
+        "--fixture-file",
+        type=Path,
+        default=None,
+        help="Read fixture HTML/RSS content instead of fetching network URLs.",
+    )
 
     run_source = subparsers.add_parser("run-source", help="Run one scheduled source")
     run_source.add_argument("--source-id", required=True)
@@ -73,6 +79,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Only report the selected source without fetching it.",
+    )
+    run_source.add_argument(
+        "--fixture-file",
+        type=Path,
+        default=None,
+        help="Read fixture HTML/RSS content instead of fetching the network URL.",
     )
 
     return parser
@@ -134,7 +146,11 @@ def run_cli(argv: Sequence[str] | None = None) -> dict[str, Any]:
                 "sources": [serialize_dataclass(source) for source in sources],
                 "schedulePath": str(scheduler.store.path),
             }
-        results = scheduler.run_due_sources()
+        fetchers = build_fixture_fetchers(
+            scheduler,
+            fixture_file=args.fixture_file,
+        )
+        results = scheduler.run_due_sources(fetchers=fetchers)
         return serialize_run_results(results, schedule_path=str(scheduler.store.path))
 
     if args.command == "run-source":
@@ -150,7 +166,8 @@ def run_cli(argv: Sequence[str] | None = None) -> dict[str, Any]:
                 "sources": [serialize_dataclass(source) for source in sources],
                 "schedulePath": str(scheduler.store.path),
             }
-        result = scheduler.run_source(args.source_id, force=args.force)
+        fetcher = build_fixture_fetcher(args.fixture_file)
+        result = scheduler.run_source(args.source_id, force=args.force, fetcher=fetcher)
         return serialize_run_results([result], schedule_path=str(scheduler.store.path))
 
     raise ValueError(f"Unsupported command: {args.command}")
@@ -211,6 +228,29 @@ def serialize_run_results(
         "results": [serialize_dataclass(result) for result in results],
         "schedulePath": schedule_path,
     }
+
+
+def build_fixture_fetchers(
+    scheduler: DynamicKnowledgeCrawlScheduler,
+    *,
+    fixture_file: Path | None,
+) -> dict[str, Any] | None:
+    """Build per-source fixture fetchers for local crawler smoke tests."""
+    fetcher = build_fixture_fetcher(fixture_file)
+    if fetcher is None:
+        return None
+    return {
+        source.source_id: fetcher
+        for source in scheduler.due_sources()
+    }
+
+
+def build_fixture_fetcher(fixture_file: Path | None) -> Any | None:
+    """Return a fetcher that reads fixture content instead of the network."""
+    if fixture_file is None:
+        return None
+    fixture_text = fixture_file.read_text(encoding="utf-8")
+    return lambda url: fixture_text
 
 
 def serialize_dataclass(value: Any) -> dict[str, Any]:

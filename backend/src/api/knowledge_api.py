@@ -16,6 +16,7 @@ from ..knowledge.source_governance import DynamicSourceGovernancePolicy
 from ..routes.knowledge import (
     collect_rss_feed_payload,
     collect_web_page_payload,
+    audit_knowledge_payload,
     get_processed_record_payload,
     evaluate_knowledge_payload,
     list_dynamic_sources_payload,
@@ -122,6 +123,14 @@ def create_knowledge_api(
     def evaluate_knowledge(payload: dict[str, Any]) -> dict[str, Any]:
         return call_route(
             evaluate_knowledge_payload,
+            payload,
+            repository=repository,
+        )
+
+    @app.post("/knowledge/audit")
+    def audit_knowledge(payload: dict[str, Any]) -> dict[str, Any]:
+        return call_route(
+            audit_knowledge_payload,
             payload,
             repository=repository,
         )

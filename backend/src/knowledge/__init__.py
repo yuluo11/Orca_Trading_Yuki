@@ -12,6 +12,7 @@ from .evaluation import (
     KnowledgeEvalSummary,
     KnowledgeRetrievalEvaluator,
 )
+from .quality import KnowledgeQualityAuditor, KnowledgeQualityIssue, KnowledgeQualitySummary
 from .source_governance import (
     DEFAULT_DYNAMIC_SOURCE_GOVERNANCE,
     DataSourceRule,
@@ -39,6 +40,9 @@ __all__ = [
     "KnowledgeEvalCaseResult",
     "KnowledgeEvalSummary",
     "KnowledgeRetrievalEvaluator",
+    "KnowledgeQualityAuditor",
+    "KnowledgeQualityIssue",
+    "KnowledgeQualitySummary",
     "RSSFeedCollectionResult",
     "ScheduledKnowledgeSource",
     "SourceGovernanceDecision",

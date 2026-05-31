@@ -13,8 +13,9 @@ from ..app import (
     collect_rss_feed_knowledge,
     collect_web_page_knowledge,
 )
-from ..knowledge.indexing import KnowledgeIndexer
+from ..knowledge.indexing import KnowledgeIndexer, VectorBackendConfig
 from ..knowledge.evaluation import KnowledgeRetrievalEvaluator, parse_eval_case
+from ..knowledge.quality import KnowledgeQualityAuditor
 from ..knowledge.collectors import CollectedKnowledgeItem, HtmlFetcher
 from ..knowledge.collector_service import RSSFeedCollectionResult, WebPageCollectionResult
 from ..knowledge.ingest import BatchIngestSummary
@@ -134,7 +135,10 @@ def search_knowledge_payload(
     if metadata_filter is not None and not isinstance(metadata_filter, dict):
         raise ValueError("metadata_filter must be an object when provided")
 
-    backend = KnowledgeIndexer(repo).load_or_build_default_backend(datasets)
+    backend = KnowledgeIndexer(repo).build_configured_backend(
+        _vector_backend_config(payload.get("vector_backend")),
+        datasets=datasets,
+    )
     retriever = KnowledgeRetriever(repo, backend=backend)
     if include_scores:
         scored_documents = retriever.search_with_scores(
@@ -187,6 +191,33 @@ def evaluate_knowledge_payload(
     summary = evaluator.evaluate_cases(
         [parse_eval_case(raw_case) for raw_case in raw_cases],
         include_disabled=include_disabled,
+    )
+    return summary.to_dict()
+
+
+def audit_knowledge_payload(
+    payload: dict[str, Any],
+    *,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Run processed knowledge data quality checks on demand."""
+    repo = repository or KnowledgeRepository()
+    datasets = _datasets(payload.get("datasets") or payload.get("dataset") or ("foundation", "dynamic"))
+    dynamic_max_age_days = _optional_int(payload.get("dynamic_max_age_days"))
+    if "dynamic_max_age_days" not in payload:
+        dynamic_max_age_days = 45
+    required_metadata = payload.get("required_metadata")
+    if required_metadata is None:
+        required_fields = ("dataset", "title", "created_at", "updated_at")
+    elif isinstance(required_metadata, list):
+        required_fields = tuple(str(field) for field in required_metadata if str(field).strip())
+    else:
+        raise ValueError("required_metadata must be a list when provided")
+
+    summary = KnowledgeQualityAuditor(repo).audit(
+        datasets=datasets,
+        dynamic_max_age_days=dynamic_max_age_days,
+        required_metadata=required_fields,
     )
     return summary.to_dict()
 
@@ -427,6 +458,19 @@ def _datasets(value: Any) -> tuple[DatasetName, ...]:
         if datasets:
             return datasets
     raise ValueError("datasets must be a dataset string or a non-empty list")
+
+
+def _vector_backend_config(value: Any) -> VectorBackendConfig:
+    if value is None:
+        return VectorBackendConfig()
+    if isinstance(value, str):
+        return VectorBackendConfig(kind=value)
+    if isinstance(value, dict):
+        return VectorBackendConfig(
+            kind=value.get("kind", "auto"),
+            index_name=_optional_string(value.get("index_name")),
+        )
+    raise ValueError("vector_backend must be a string or object when provided")
 
 
 def _excerpt(text: str, *, limit: int = 240) -> str:

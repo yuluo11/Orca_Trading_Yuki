@@ -43,6 +43,16 @@ python -m backend.src.knowledge.source_scheduler_cli \
   run-due
 ```
 
+Run the full scheduler -> collector -> ingest flow with a local fixture instead
+of a real network fetch:
+
+```bash
+python -m backend.src.knowledge.source_scheduler_cli \
+  --data-root backend/data \
+  run-due \
+  --fixture-file backend/data/fixtures/example_feed.xml
+```
+
 Run one source immediately:
 
 ```bash

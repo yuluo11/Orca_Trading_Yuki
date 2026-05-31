@@ -6,6 +6,7 @@ import unittest
 import json
 
 from backend.src.knowledge.source_scheduler_cli import run_cli
+from backend.src.knowledge.repository import KnowledgeRepository
 
 
 class DynamicKnowledgeSchedulerCliTests(unittest.TestCase):
@@ -148,6 +149,56 @@ class DynamicKnowledgeSchedulerCliTests(unittest.TestCase):
         self.assertEqual(0, before_import["count"])
         self.assertFalse(imported["dryRun"])
         self.assertEqual(2, listed["count"])
+
+    def test_cli_run_due_can_use_fixture_file_to_smoke_test_crawler_flow(self) -> None:
+        rss_fixture = """<?xml version="1.0"?>
+        <rss version="2.0">
+          <channel>
+            <item>
+              <title>NVDA fixture crawl update</title>
+              <link>https://example.com/nvda-fixture</link>
+              <description>Fixture crawl proves the scheduler ingest path works.</description>
+            </item>
+          </channel>
+        </rss>
+        """
+        with TemporaryDirectory() as tmpdir:
+            data_root = Path(tmpdir) / "data"
+            fixture_path = Path(tmpdir) / "fixture.xml"
+            fixture_path.write_text(rss_fixture, encoding="utf-8")
+
+            run_cli(
+                [
+                    "--data-root",
+                    str(data_root),
+                    "register",
+                    "--source-id",
+                    "fixture_feed",
+                    "--source-type",
+                    "rss_feed",
+                    "--url",
+                    "https://example.com/feed.xml",
+                    "--symbol",
+                    "NVDA",
+                ]
+            )
+            result = run_cli(
+                [
+                    "--data-root",
+                    str(data_root),
+                    "run-due",
+                    "--fixture-file",
+                    str(fixture_path),
+                ]
+            )
+            repository = KnowledgeRepository(data_root=data_root)
+            records = repository.load_all_processed_records("dynamic")
+
+        self.assertEqual(1, result["count"])
+        self.assertEqual("success", result["results"][0]["status"])
+        self.assertEqual(1, result["results"][0]["imported_count"])
+        self.assertEqual(1, len(records))
+        self.assertIn("Fixture crawl", records[0]["text"])
 
 
 if __name__ == "__main__":

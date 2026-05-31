@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
+orca-knowledge-eval = "backend.src.knowledge.evaluation_cli:main"
 orca-knowledge-scheduler = "backend.src.knowledge.source_scheduler_cli:main"
 
 [project.optional-dependencies]

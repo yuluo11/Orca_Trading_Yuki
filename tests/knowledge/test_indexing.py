@@ -5,7 +5,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from backend.src.knowledge.indexing import KnowledgeIndexer, PersistedTokenVectorIndex
+from backend.src.knowledge.indexing import (
+    KnowledgeIndexer,
+    LocalVectorIndex,
+    PersistedTokenVectorIndex,
+    VectorBackendConfig,
+)
 from backend.src.knowledge.ingest import KnowledgeIngestor
 from backend.src.knowledge.repository import KnowledgeRepository
 
@@ -154,6 +159,34 @@ class KnowledgeIndexerTests(unittest.TestCase):
         self.assertIn("event fade", results[0].page_content.lower())
         self.assertEqual("NVDA", scored_results[0][0].metadata["symbol"])
         self.assertGreater(scored_results[0][1], 0)
+
+    def test_build_configured_backend_selects_local_and_persisted_backends(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            ingestor = KnowledgeIngestor(repository)
+            ingestor.ingest_text(
+                "dynamic",
+                "nvda_backend_note",
+                "NVDA backend selection should preserve retrieval behavior.",
+                metadata={"symbol": "NVDA", "category": "news"},
+            )
+
+            indexer = KnowledgeIndexer(repository)
+            local_backend = indexer.build_configured_backend(
+                VectorBackendConfig(kind="local"),
+                datasets=("dynamic",),
+            )
+            persisted_backend = indexer.build_configured_backend(
+                VectorBackendConfig(kind="persisted_token"),
+                datasets=("dynamic",),
+            )
+
+        self.assertIsInstance(local_backend, LocalVectorIndex)
+        self.assertIsInstance(persisted_backend, PersistedTokenVectorIndex)
+        self.assertEqual(
+            "NVDA",
+            persisted_backend.similarity_search("NVDA backend", k=1)[0].metadata["symbol"],
+        )
 
 
 if __name__ == "__main__":

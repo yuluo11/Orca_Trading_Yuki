@@ -36,5 +36,13 @@ summary = KnowledgeRetrievalEvaluator().evaluate_file(
 print(summary.to_dict())
 ```
 
+Or run it from the CLI:
+
+```bash
+python -m backend.src.knowledge.evaluation_cli \
+  --data-root backend/data \
+  --eval-set backend/data/manifests/knowledge_eval_set_template.json
+```
+
 Disabled cases are skipped by default, so the user decides exactly which checks
 are fixed at any point in the project.

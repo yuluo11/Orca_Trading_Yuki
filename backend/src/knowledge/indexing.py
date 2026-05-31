@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import math
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .documents import load_dataset_documents
 from .repository import DatasetName, KnowledgeRepository
+
+VectorBackendKind = Literal["auto", "local", "persisted_token", "langchain_inmemory"]
+
+
+@dataclass(frozen=True, slots=True)
+class VectorBackendConfig:
+    """Configuration for choosing a knowledge retrieval backend."""
+
+    kind: VectorBackendKind = "auto"
+    index_name: str | None = None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -244,6 +255,32 @@ class KnowledgeIndexer:
                 )
 
         return PersistedTokenVectorIndex(persisted_entries)
+
+    def build_configured_backend(
+        self,
+        config: VectorBackendConfig | None = None,
+        *,
+        datasets: Sequence[DatasetName] | None = None,
+        embeddings: Any | None = None,
+    ) -> Any:
+        """Build a retrieval backend from a small backend config."""
+        resolved_config = config or VectorBackendConfig()
+        if resolved_config.kind == "auto":
+            return self.load_or_build_default_backend(datasets)
+        if resolved_config.kind == "local":
+            return self.build_local_index(datasets)
+        if resolved_config.kind == "persisted_token":
+            if resolved_config.index_name:
+                try:
+                    return self.load_persisted_token_vector_index(resolved_config.index_name)
+                except FileNotFoundError:
+                    pass
+            return self.build_persisted_token_vector_index(datasets)
+        if resolved_config.kind == "langchain_inmemory":
+            if embeddings is None:
+                raise ValueError("embeddings are required for langchain_inmemory backend")
+            return self.build_inmemory_vector_store(embeddings, datasets)
+        raise ValueError(f"Unsupported vector backend kind: {resolved_config.kind}")
 
     def build_persisted_token_vector_index(
         self,
