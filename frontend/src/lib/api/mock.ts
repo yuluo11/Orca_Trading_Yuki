@@ -1,43 +1,8 @@
-import { AnalysisRequest, AnalysisResponse, HistoryRun, WebPageContextRequest, WebPageContextResponse } from "./types";
+import { AnalysisRequest, AnalysisResponse, StartAnalysisResponse, HistoryRun, WebPageContextRequest, WebPageContextResponse } from "./types";
 
 export const MOCK_DELAY = 1500;
 
-export async function mockStartAnalysis(data: AnalysisRequest): Promise<AnalysisResponse> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        analysts: [
-          {
-            analyst: "Market Analyst",
-            summary: `Market conditions for ${data.symbol || "the asset"} are showing a neutral trend.`,
-            details: {},
-          },
-          {
-            analyst: "News Analyst",
-            summary: "No significant breaking news detected in the last 24 hours.",
-            details: {},
-          }
-        ],
-        decision: {
-          recommendation: "HOLD",
-          confidence: 0.65,
-          reasoning: "Insufficient directional momentum and mixed signals across analytical dimensions.",
-          riskNotes: [
-            "Macro environment remains highly uncertain.",
-            "Wait for a clearer breakout signal."
-          ],
-        },
-        reflection: {
-          insights: ["Historical backtests indicate whipsaw risks in similar low-volatility regimes."],
-          guidance: "Prioritize capital preservation. Do not force trades in choppy markets.",
-        },
-      });
-    }, MOCK_DELAY);
-  });
-}
-
 // 模拟历史任务数据
-
 const MOCK_HISTORY_RUNS: HistoryRun[] = [
   {
     id: "run_001",
@@ -63,6 +28,27 @@ const MOCK_HISTORY_RUNS: HistoryRun[] = [
     recommendation: "HOLD"
   }
 ];
+
+export async function mockStartAnalysis(data: AnalysisRequest): Promise<StartAnalysisResponse> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      // 在实际业务中，由于异步生成，这里我们仅仅先生成一个占位记录并返回 runId
+      const newId = `run_${String(MOCK_HISTORY_RUNS.length + 1).padStart(3, '0')}_${Date.now().toString().slice(-4)}`;
+      MOCK_HISTORY_RUNS.unshift({
+        id: newId,
+        symbol: data.symbol.toUpperCase(),
+        tradeDate: data.tradeDate,
+        status: "completed", // 或者 'running' 如果我们需要模拟轮询
+        createdAt: new Date().toISOString(),
+        recommendation: "HOLD" // 默认占位
+      });
+
+      resolve({
+        runId: newId
+      });
+    }, MOCK_DELAY);
+  });
+}
 
 export async function mockGetHistory(): Promise<HistoryRun[]> {
   return new Promise((resolve) => {
