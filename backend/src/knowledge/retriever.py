@@ -59,6 +59,33 @@ class KnowledgeRetriever:
             metadata_filter=metadata_filter,
         )
 
+    def search_with_scores(
+        self,
+        query: str,
+        *,
+        datasets: Sequence[DatasetName] | None = None,
+        k: int = 4,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[tuple[Any, float]]:
+        """Search knowledge documents and retain backend relevance scores."""
+        if self.backend is not None and hasattr(self.backend, "similarity_search_with_scores"):
+            search_kwargs: dict[str, Any] = {}
+            if metadata_filter:
+                search_kwargs["filter"] = metadata_filter
+            return self.backend.similarity_search_with_scores(query, k=k, **search_kwargs)
+
+        documents = self._fallback_search(
+            query,
+            datasets=datasets,
+            k=k,
+            metadata_filter=metadata_filter,
+        )
+        query_terms = {term for term in query.lower().split() if term}
+        return [
+            (document, float(self._fallback_score(document, query_terms)))
+            for document in documents
+        ]
+
     def _fallback_search(
         self,
         query: str,
@@ -93,6 +120,20 @@ class KnowledgeRetriever:
 
         scored_documents.sort(key=lambda item: item[0], reverse=True)
         return [document for _, document in scored_documents[:k]]
+
+    def _fallback_score(self, document: Any, query_terms: set[str]) -> int:
+        haystack = " ".join(
+            str(value)
+            for value in (
+                document.page_content,
+                document.metadata.get("title", ""),
+                " ".join(document.metadata.get("tags", [])),
+                document.metadata.get("symbol", ""),
+                document.metadata.get("topic", ""),
+                document.metadata.get("category", ""),
+            )
+        ).lower()
+        return sum(1 for term in query_terms if term in haystack)
 
     def _matches_metadata_filter(
         self,

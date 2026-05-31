@@ -6,6 +6,12 @@ from .collector_service import (
     RSSFeedCollectionResult,
     WebPageCollectionResult,
 )
+from .evaluation import (
+    KnowledgeEvalCase,
+    KnowledgeEvalCaseResult,
+    KnowledgeEvalSummary,
+    KnowledgeRetrievalEvaluator,
+)
 from .source_governance import (
     DEFAULT_DYNAMIC_SOURCE_GOVERNANCE,
     DataSourceRule,
@@ -29,6 +35,10 @@ __all__ = [
     "DynamicSourceScheduleStore",
     "DynamicSourceGovernancePolicy",
     "KnowledgeCollectorService",
+    "KnowledgeEvalCase",
+    "KnowledgeEvalCaseResult",
+    "KnowledgeEvalSummary",
+    "KnowledgeRetrievalEvaluator",
     "RSSFeedCollectionResult",
     "ScheduledKnowledgeSource",
     "SourceGovernanceDecision",

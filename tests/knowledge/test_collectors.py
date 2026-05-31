@@ -94,6 +94,8 @@ class KnowledgeCollectorTests(unittest.TestCase):
         <html>
           <head>
             <title>NVIDIA event update</title>
+            <meta name="author" content="Market Desk" />
+            <meta property="article:published_time" content="2026-05-31T01:00:00Z" />
             <style>.hidden { display: none; }</style>
           </head>
           <body>
@@ -121,6 +123,9 @@ class KnowledgeCollectorTests(unittest.TestCase):
         self.assertEqual("NVIDIA event update", item.metadata["title"])
         self.assertEqual("NVDA", item.metadata["symbol"])
         self.assertEqual("news", item.metadata["category"])
+        self.assertEqual("Market Desk", item.metadata["author"])
+        self.assertEqual("2026-05-31T01:00:00Z", item.metadata["published_at"])
+        self.assertEqual("primary_content", item.metadata["extraction_method"])
         self.assertEqual("https://example.com/markets/nvidia-event-update", item.metadata["source_url"])
         self.assertIn("fade risk", item.text)
         self.assertNotIn("navigation", item.text.lower())
@@ -138,6 +143,64 @@ class KnowledgeCollectorTests(unittest.TestCase):
 
         self.assertEqual("Setup", extracted.title)
         self.assertIn("Headline Body text.", extracted.text)
+
+    def test_extract_web_page_text_prefers_article_and_meta_description(self) -> None:
+        extracted = extract_web_page_text(
+            """
+            <html>
+              <head>
+                <script type="application/ld+json">
+                  {
+                    "@type": "NewsArticle",
+                    "headline": "NVDA article title",
+                    "description": "Article summary for search snippets.",
+                    "author": {"name": "Research Desk"},
+                    "datePublished": "2026-05-31T02:30:00Z"
+                  }
+                </script>
+              </head>
+              <body>
+                <aside>Subscribe now and share this page.</aside>
+                <div class="related">Related links should not dominate extraction.</div>
+                <article>
+                  <h1>NVDA article title</h1>
+                  <p>Fresh AI infrastructure commentary supported the catalyst setup.</p>
+                  <p>Event fade risk still needs confirmation before position sizing.</p>
+                </article>
+                <footer>Boilerplate footer should be skipped.</footer>
+              </body>
+            </html>
+            """
+        )
+
+        self.assertEqual("NVDA article title", extracted.title)
+        self.assertEqual("Article summary for search snippets.", extracted.description)
+        self.assertEqual("Research Desk", extracted.author)
+        self.assertEqual("2026-05-31T02:30:00Z", extracted.published_at)
+        self.assertEqual("primary_content", extracted.extraction_method)
+        self.assertIn("AI infrastructure commentary", extracted.text)
+        self.assertIn("Event fade risk", extracted.text)
+        self.assertNotIn("Subscribe now", extracted.text)
+        self.assertNotIn("footer", extracted.text.lower())
+
+    def test_extract_web_page_text_closes_primary_container_scope(self) -> None:
+        extracted = extract_web_page_text(
+            """
+            <html>
+              <body>
+                <div class="main-content">
+                  <p>Primary market commentary has enough detail to be selected as content.</p>
+                  <p>It includes catalyst context, risk framing, and confirmation notes.</p>
+                </div>
+                <div class="related">Related sidebar should stay outside the primary extraction.</div>
+              </body>
+            </html>
+            """
+        )
+
+        self.assertEqual("primary_content", extracted.extraction_method)
+        self.assertIn("Primary market commentary", extracted.text)
+        self.assertNotIn("Related sidebar", extracted.text)
 
     def test_rss_news_collector_parses_feed_items(self) -> None:
         collector = RSSNewsCollector(

@@ -42,6 +42,7 @@ class SourceGovernanceTests(unittest.TestCase):
                     source_types=("rss_feed",),
                     default_category="news",
                     reliability="high",
+                    trust_score=0.95,
                     max_items_per_collect=1,
                     min_refresh_interval_minutes=30,
                 ),
@@ -60,7 +61,41 @@ class SourceGovernanceTests(unittest.TestCase):
         self.assertEqual("trusted_news_feed", metadata["source_rule"])
         self.assertEqual("trusted.example.com", metadata["source_domain"])
         self.assertEqual("high", metadata["reliability"])
+        self.assertEqual(0.95, metadata["source_trust_score"])
         self.assertEqual(30, metadata["source_min_refresh_interval_minutes"])
+
+    def test_source_rule_can_constrain_url_paths(self) -> None:
+        policy = DynamicSourceGovernancePolicy(
+            rules=(
+                DataSourceRule(
+                    name="filing_articles_only",
+                    domains=("trusted.example.com",),
+                    allowed_path_prefixes=("/markets/",),
+                    blocked_path_keywords=("sponsored",),
+                ),
+            )
+        )
+
+        decision = policy.evaluate(
+            "https://trusted.example.com/markets/nvda-update",
+            source_type="web_page",
+            category="news",
+        )
+
+        self.assertEqual("filing_articles_only", decision.rule_name)
+        self.assertGreater(decision.trust_score, 0)
+        with self.assertRaises(SourceGovernanceError):
+            policy.evaluate(
+                "https://trusted.example.com/blog/nvda-update",
+                source_type="web_page",
+                category="news",
+            )
+        with self.assertRaises(SourceGovernanceError):
+            policy.evaluate(
+                "https://trusted.example.com/markets/sponsored-nvda-update",
+                source_type="web_page",
+                category="news",
+            )
 
     def test_blocked_source_is_rejected_before_fetch(self) -> None:
         policy = DynamicSourceGovernancePolicy(blocked_domains=("blocked.example.com",))

@@ -20,6 +20,11 @@ class KnowledgeIngestorTests(unittest.TestCase):
                 "foundation",
                 "nvda-market-note",
                 "  Disclaimer: internal draft only  \n\nAlpha   signal\t\tremains active.\r\n\r\n\r\nPage 1 of 3\n",
+                metadata={
+                    "category": "Research Notes",
+                    "source_url": "https://Research.Example.com/nvda",
+                    "tags": [" AI ", "ai", "Catalyst"],
+                },
             )
 
             record = repository.load_processed_record("foundation", record_path.stem)
@@ -29,6 +34,11 @@ class KnowledgeIngestorTests(unittest.TestCase):
         self.assertEqual("medium", record["metadata"]["reliability"])
         self.assertEqual("low", record["metadata"]["time_sensitivity"])
         self.assertEqual("foundation", record["metadata"]["dataset"])
+        self.assertEqual("research_notes", record["metadata"]["category"])
+        self.assertEqual("research.example.com", record["metadata"]["source_domain"])
+        self.assertEqual(["ai", "catalyst"], record["metadata"]["tags"])
+        self.assertEqual(len(record["text"]), record["metadata"]["content_length"])
+        self.assertIn("content_hash", record["metadata"])
 
     def test_ingest_text_skips_exact_duplicate_content_in_same_dataset(self) -> None:
         with TemporaryDirectory() as tmpdir:

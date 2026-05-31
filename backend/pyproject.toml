@@ -12,7 +12,14 @@ dependencies = [
     "langgraph>=1.2.0,<2.0.0",
 ]
 
+[project.scripts]
+orca-knowledge-scheduler = "backend.src.knowledge.source_scheduler_cli:main"
+
 [project.optional-dependencies]
+api = [
+    "fastapi>=0.110",
+    "uvicorn>=0.25",
+]
 dev = [
     "pytest>=8.0",
 ]

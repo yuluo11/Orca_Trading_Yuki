@@ -33,6 +33,9 @@ class DataSourceRule:
     enabled: bool = True
     max_items_per_collect: int | None = None
     min_refresh_interval_minutes: int | None = None
+    trust_score: float | None = None
+    allowed_path_prefixes: tuple[str, ...] = ()
+    blocked_path_keywords: tuple[str, ...] = ()
     notes: str = ""
 
 
@@ -47,6 +50,7 @@ class SourceGovernanceDecision:
     category: str
     reliability: KnowledgeReliability
     time_sensitivity: KnowledgeTimeSensitivity
+    trust_score: float
     max_items_per_collect: int | None = None
     min_refresh_interval_minutes: int | None = None
     notes: str = ""
@@ -59,6 +63,7 @@ class SourceGovernanceDecision:
             "source_type": self.source_type,
             "source_reliability": self.reliability,
             "source_time_sensitivity": self.time_sensitivity,
+            "source_trust_score": self.trust_score,
             "source_min_refresh_interval_minutes": self.min_refresh_interval_minutes,
             "source_governance_notes": self.notes,
         }
@@ -74,6 +79,7 @@ class DynamicSourceGovernancePolicy:
     allow_unregistered_sources: bool = True
     default_reliability: KnowledgeReliability = "medium"
     default_time_sensitivity: KnowledgeTimeSensitivity = "high"
+    default_trust_score: float = 0.5
 
     def evaluate(
         self,
@@ -84,6 +90,7 @@ class DynamicSourceGovernancePolicy:
     ) -> SourceGovernanceDecision:
         """Validate and classify a dynamic source URL."""
         domain = normalize_domain(source_url)
+        parsed = urlparse(source_url)
         if self._matches_any_domain(domain, self.blocked_domains):
             raise SourceGovernanceError(f"Source domain is blocked by policy: {domain}")
 
@@ -102,11 +109,13 @@ class DynamicSourceGovernancePolicy:
                 category=category,
                 reliability=self.default_reliability,
                 time_sensitivity=self.default_time_sensitivity,
+                trust_score=self.default_trust_score,
                 notes="No registered source rule matched; default governance applied.",
             )
 
         if not rule.enabled:
             raise SourceGovernanceError(f"Source rule is disabled: {rule.name}")
+        self._validate_path_rules(parsed.path or "/", rule)
 
         return SourceGovernanceDecision(
             source_url=source_url,
@@ -116,6 +125,9 @@ class DynamicSourceGovernancePolicy:
             category=rule.default_category or category,
             reliability=rule.reliability,
             time_sensitivity=rule.time_sensitivity,
+            trust_score=rule.trust_score
+            if rule.trust_score is not None
+            else reliability_to_trust_score(rule.reliability),
             max_items_per_collect=rule.max_items_per_collect,
             min_refresh_interval_minutes=rule.min_refresh_interval_minutes,
             notes=rule.notes,
@@ -132,6 +144,20 @@ class DynamicSourceGovernancePolicy:
     def _matches_any_domain(self, domain: str, candidates: tuple[str, ...]) -> bool:
         return any(domain_matches(domain, candidate) for candidate in candidates)
 
+    def _validate_path_rules(self, path: str, rule: DataSourceRule) -> None:
+        normalized_path = path.lower()
+        if rule.allowed_path_prefixes and not any(
+            normalized_path.startswith(prefix.lower()) for prefix in rule.allowed_path_prefixes
+        ):
+            raise SourceGovernanceError(
+                f"Source path is outside allowed prefixes for rule {rule.name}: {path}"
+            )
+        for keyword in rule.blocked_path_keywords:
+            if keyword.lower() in normalized_path:
+                raise SourceGovernanceError(
+                    f"Source path contains a blocked keyword for rule {rule.name}: {keyword}"
+                )
+
 
 def normalize_domain(source_url: str) -> str:
     """Extract a normalized domain from an HTTP(S) source URL."""
@@ -147,6 +173,15 @@ def domain_matches(domain: str, candidate: str) -> bool:
     if not normalized_candidate:
         return False
     return domain == normalized_candidate or domain.endswith(f".{normalized_candidate}")
+
+
+def reliability_to_trust_score(reliability: KnowledgeReliability) -> float:
+    """Map coarse source reliability into a stable numeric trust signal."""
+    return {
+        "high": 0.9,
+        "medium": 0.6,
+        "low": 0.3,
+    }[reliability]
 
 
 DEFAULT_DYNAMIC_SOURCE_GOVERNANCE = DynamicSourceGovernancePolicy(

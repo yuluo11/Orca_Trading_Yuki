@@ -9,6 +9,7 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from .policy import DEFAULT_KNOWLEDGE_POLICY, KnowledgePolicy
 from .indexing import KnowledgeIndexer
@@ -168,6 +169,7 @@ class KnowledgeIngestor:
             dataset,
             metadata,
             name=name,
+            text=cleaned_text,
             created_at=created_at,
             source_path=source_path,
         )
@@ -301,6 +303,7 @@ class KnowledgeIngestor:
         metadata: KnowledgeMetadata | None,
         *,
         name: str,
+        text: str,
         created_at: str | None = None,
         source_path: Path | None = None,
     ) -> KnowledgeMetadata:
@@ -322,6 +325,9 @@ class KnowledgeIngestor:
             "time_sensitivity",
             self.policy.metadata.default_time_sensitivity(dataset),
         )
+        prepared.setdefault("content_hash", self._text_hash(text))
+        prepared.setdefault("content_length", len(text))
+        self._normalize_metadata_values(prepared)
         return prepared
 
     def _update_manifest(
@@ -442,6 +448,69 @@ class KnowledgeIngestor:
         if not topic_tokens:
             return None
         return " ".join(topic_tokens[:4])
+
+    def _normalize_metadata_values(self, metadata: KnowledgeMetadata) -> None:
+        """Standardize common metadata fields before a record is persisted."""
+        if "symbol" in metadata:
+            symbol = str(metadata["symbol"]).strip().upper()
+            if symbol:
+                metadata["symbol"] = symbol
+            else:
+                metadata.pop("symbol", None)
+
+        if "category" in metadata:
+            category = str(metadata["category"]).strip().lower()
+            category = re.sub(r"[^a-z0-9]+", "_", category).strip("_")
+            if category:
+                metadata["category"] = category
+            else:
+                metadata.pop("category", None)
+
+        if "topic" in metadata:
+            topic = re.sub(r"\s+", " ", str(metadata["topic"]).strip().lower())
+            if topic:
+                metadata["topic"] = topic
+            else:
+                metadata.pop("topic", None)
+
+        if "title" in metadata:
+            title = re.sub(r"\s+", " ", str(metadata["title"]).strip())
+            metadata["title"] = title or "Untitled Record"
+
+        if "source_url" in metadata and "source_domain" not in metadata:
+            parsed = urlparse(str(metadata["source_url"]))
+            if parsed.hostname:
+                metadata["source_domain"] = parsed.hostname.lower()
+
+        if "source_domain" in metadata:
+            domain = str(metadata["source_domain"]).strip().lower()
+            if domain:
+                metadata["source_domain"] = domain
+            else:
+                metadata.pop("source_domain", None)
+
+        if "tags" in metadata:
+            raw_tags = metadata["tags"]
+            if isinstance(raw_tags, str):
+                raw_tag_values = raw_tags.split(",")
+            else:
+                raw_tag_values = list(raw_tags)
+            tags: list[str] = []
+            for tag in raw_tag_values:
+                normalized = re.sub(r"\s+", " ", str(tag).strip().lower())
+                if normalized and normalized not in tags:
+                    tags.append(normalized)
+            if tags:
+                metadata["tags"] = tags
+            else:
+                metadata.pop("tags", None)
+
+        if metadata.get("reliability") not in {"high", "medium", "low"}:
+            metadata["reliability"] = self.policy.metadata.default_reliability
+        if metadata.get("time_sensitivity") not in {"high", "medium", "low"}:
+            metadata["time_sensitivity"] = self.policy.metadata.default_time_sensitivity(
+                metadata["dataset"]
+            )
 
     def _clean_text(self, text: str) -> str:
         """Apply lightweight normalization and boilerplate cleanup to raw text."""

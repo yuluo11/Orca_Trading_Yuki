@@ -8,6 +8,7 @@ from backend.src.knowledge.repository import KnowledgeRepository
 from backend.src.routes.knowledge import (
     collect_rss_feed_payload,
     collect_web_page_payload,
+    evaluate_knowledge_payload,
     get_processed_record_payload,
     list_processed_records_payload,
     search_knowledge_payload,
@@ -99,6 +100,7 @@ class KnowledgeRouteHandlerTests(unittest.TestCase):
                     "query": "NVDA catalyst confirmation",
                     "datasets": ["dynamic"],
                     "metadata_filter": {"symbol": "NVDA"},
+                    "include_scores": True,
                 },
                 repository=repository,
             )
@@ -108,6 +110,50 @@ class KnowledgeRouteHandlerTests(unittest.TestCase):
         self.assertIn("Confirmation improved", loaded["text"])
         self.assertEqual(1, search["count"])
         self.assertEqual("NVDA", search["documents"][0]["metadata"]["symbol"])
+        self.assertGreater(search["documents"][0]["score"], 0)
+
+    def test_evaluate_knowledge_payload_runs_user_fixed_cases(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            collect_rss_feed_payload(
+                {
+                    "feed_url": "https://example.com/feed.xml",
+                    "persist": True,
+                    "symbol": "NVDA",
+                    "max_items": 1,
+                },
+                repository=repository,
+                fetcher=lambda url: """
+                    <rss version="2.0">
+                      <channel>
+                        <item>
+                          <title>NVDA event fade risk</title>
+                          <link>https://example.com/nvda-event-fade</link>
+                          <description>NVDA event fade risk remains active.</description>
+                        </item>
+                      </channel>
+                    </rss>
+                """,
+            )
+
+            summary = evaluate_knowledge_payload(
+                {
+                    "cases": [
+                        {
+                            "case_id": "nvda_event_fade",
+                            "query": "NVDA event fade risk",
+                            "datasets": ["dynamic"],
+                            "expected_symbols": ["NVDA"],
+                            "must_include_terms": ["fade", "risk"],
+                        }
+                    ]
+                },
+                repository=repository,
+            )
+
+        self.assertTrue(summary["passed"])
+        self.assertEqual(1, summary["passedCount"])
+        self.assertEqual("nvda_event_fade", summary["results"][0]["caseId"])
 
 
 if __name__ == "__main__":

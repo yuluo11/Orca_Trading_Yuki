@@ -18,6 +18,14 @@ class KnowledgeMetadata(TypedDict, total=False):
     tags: list[str]
     symbol: str
     topic: str
+    source_url: str
+    source_domain: str
+    author: str
+    published_at: str
+    summary: str
+    extraction_method: str
+    content_hash: str
+    content_length: int
     reliability: KnowledgeReliability
     time_sensitivity: KnowledgeTimeSensitivity
     dataset: KnowledgeDataset

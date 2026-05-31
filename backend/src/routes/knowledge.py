@@ -14,6 +14,7 @@ from ..app import (
     collect_web_page_knowledge,
 )
 from ..knowledge.indexing import KnowledgeIndexer
+from ..knowledge.evaluation import KnowledgeRetrievalEvaluator, parse_eval_case
 from ..knowledge.collectors import CollectedKnowledgeItem, HtmlFetcher
 from ..knowledge.collector_service import RSSFeedCollectionResult, WebPageCollectionResult
 from ..knowledge.ingest import BatchIngestSummary
@@ -129,22 +130,65 @@ def search_knowledge_payload(
     datasets = _datasets(payload.get("datasets") or payload.get("dataset") or ("foundation", "dynamic"))
     k = _optional_int(payload.get("k")) or _optional_int(payload.get("max_documents")) or 4
     metadata_filter = payload.get("metadata_filter")
+    include_scores = bool(payload.get("include_scores", False))
     if metadata_filter is not None and not isinstance(metadata_filter, dict):
         raise ValueError("metadata_filter must be an object when provided")
 
     backend = KnowledgeIndexer(repo).load_or_build_default_backend(datasets)
-    documents = KnowledgeRetriever(repo, backend=backend).search(
-        query,
-        datasets=datasets,
-        k=k,
-        metadata_filter=metadata_filter,
-    )
+    retriever = KnowledgeRetriever(repo, backend=backend)
+    if include_scores:
+        scored_documents = retriever.search_with_scores(
+            query,
+            datasets=datasets,
+            k=k,
+            metadata_filter=metadata_filter,
+        )
+        documents = [
+            _serialize_document(document, score=score)
+            for document, score in scored_documents
+        ]
+    else:
+        documents = [
+            _serialize_document(document)
+            for document in retriever.search(
+                query,
+                datasets=datasets,
+                k=k,
+                metadata_filter=metadata_filter,
+            )
+        ]
     return {
         "query": query,
         "datasets": list(datasets),
         "count": len(documents),
-        "documents": [_serialize_document(document) for document in documents],
+        "documents": documents,
     }
+
+
+def evaluate_knowledge_payload(
+    payload: dict[str, Any],
+    *,
+    repository: KnowledgeRepository | None = None,
+) -> dict[str, Any]:
+    """Run user-fixed retrieval evaluation cases on demand."""
+    repo = repository or KnowledgeRepository()
+    evaluator = KnowledgeRetrievalEvaluator(repo)
+    include_disabled = bool(payload.get("include_disabled", False))
+    if "eval_set_path" in payload:
+        summary = evaluator.evaluate_file(
+            _required_string(payload, "eval_set_path"),
+            include_disabled=include_disabled,
+        )
+        return summary.to_dict()
+
+    raw_cases = payload.get("cases")
+    if not isinstance(raw_cases, list) or not raw_cases:
+        raise ValueError("Provide eval_set_path or a non-empty cases list")
+    summary = evaluator.evaluate_cases(
+        [parse_eval_case(raw_case) for raw_case in raw_cases],
+        include_disabled=include_disabled,
+    )
+    return summary.to_dict()
 
 
 def register_dynamic_source_payload(
@@ -273,15 +317,18 @@ def _serialize_record(
     return payload
 
 
-def _serialize_document(document: Any) -> dict[str, Any]:
+def _serialize_document(document: Any, *, score: float | None = None) -> dict[str, Any]:
     text = str(getattr(document, "page_content", ""))
     metadata = dict(getattr(document, "metadata", {}))
-    return {
+    payload = {
         "title": metadata.get("title", ""),
         "text": text,
         "excerpt": _excerpt(text),
         "metadata": metadata,
     }
+    if score is not None:
+        payload["score"] = round(score, 6)
+    return payload
 
 
 def _serialize_scheduled_source(source: ScheduledKnowledgeSource) -> dict[str, Any]:

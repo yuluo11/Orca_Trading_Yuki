@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "notes": "Fill this file with sources you approve for dynamic knowledge crawling. Example URLs are placeholders.",
+  "sources": [
+    {
+      "source_id": "example_company_news_feed",
+      "source_type": "rss_feed",
+      "url": "https://example.com/company-news-feed.xml",
+      "dataset": "dynamic",
+      "category": "news",
+      "enabled": false,
+      "symbol": "NVDA",
+      "topic": "company news and catalysts",
+      "max_items": 10,
+      "refresh_interval_minutes": 60
+    },
+    {
+      "source_id": "example_sec_filings_page",
+      "source_type": "web_page",
+      "url": "https://example.com/company-filings",
+      "dataset": "dynamic",
+      "category": "filing",
+      "enabled": false,
+      "symbol": "NVDA",
+      "topic": "regulatory filings",
+      "title": "Example filings page",
+      "max_items": 1,
+      "refresh_interval_minutes": 360
+    }
+  ]
+}
