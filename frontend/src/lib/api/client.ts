@@ -1,4 +1,4 @@
-import { AnalysisRequest, AnalysisResponse, HistoryRun, WebPageContextRequest, WebPageContextResponse } from "./types";
+import { AnalysisRequest, AnalysisResponse, StartAnalysisResponse, HistoryRun, WebPageContextRequest, WebPageContextResponse } from "./types";
 import { mockStartAnalysis, mockGetHistory, mockGetRunDetails, mockCollectWebPageContext } from "./mock";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -9,7 +9,7 @@ export const apiClient = {
   /**
    * 发起分析请求
    */
-  async startAnalysis(data: AnalysisRequest): Promise<AnalysisResponse> {
+  async startAnalysis(data: AnalysisRequest): Promise<StartAnalysisResponse> {
     if (USE_MOCK) {
       return mockStartAnalysis(data);
     }

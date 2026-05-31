@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AppHeader } from "@/components/layout/app-header";
+import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
   title: "Orca Trading Yuki",
@@ -21,6 +22,7 @@ export default function RootLayout({
             <AppHeader />
             {children}
           </div>
+          <Toaster theme="dark" />
         </QueryProvider>
       </body>
     </html>

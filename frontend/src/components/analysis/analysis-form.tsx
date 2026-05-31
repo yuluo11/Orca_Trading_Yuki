@@ -1,11 +1,32 @@
 import { useState } from "react";
-import { Link2, Loader2, Plus } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { toast } from "sonner";
+import { Link2, Loader2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { useCollectWebPageContext } from "@/lib/api/hooks";
 import { AnalysisRequest } from "@/lib/api/types";
+
+const formSchema = z.object({
+  symbol: z.string().min(1, "Symbol is required").toUpperCase(),
+  tradeDate: z.string().min(1, "Trade Date is required"),
+  context: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
 
 interface AnalysisFormProps {
   onSubmit: (data: AnalysisRequest) => void;
@@ -14,20 +35,29 @@ interface AnalysisFormProps {
 }
 
 export function AnalysisForm({ onSubmit, isPending, error }: AnalysisFormProps) {
-  const [symbol, setSymbol] = useState("");
-  // 默认设置为今天
-  const [tradeDate, setTradeDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [context, setContext] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+  
+  // 用于收集并在界面上展示已收集的 URL
+  const [collectedUrls, setCollectedUrls] = useState<string[]>([]);
+  
   const { mutate: collectUrl, isPending: isCollectingUrl } = useCollectWebPageContext();
 
-  const trimmedSymbol = symbol.trim();
-  const isValid = trimmedSymbol.length > 0;
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      symbol: "",
+      tradeDate: new Date().toISOString().split("T")[0],
+      context: "",
+    },
+  });
 
-  const handleSubmit = () => {
-    if (!isValid) return;
-    onSubmit({ symbol: trimmedSymbol, tradeDate, context });
+  const handleSubmit = (values: FormValues) => {
+    onSubmit({
+      symbol: values.symbol.trim(),
+      tradeDate: values.tradeDate,
+      context: values.context || "",
+    });
   };
 
   const handleCollectUrl = () => {
@@ -45,23 +75,31 @@ export function AnalysisForm({ onSubmit, isPending, error }: AnalysisFormProps) 
     collectUrl(
       {
         url: trimmedUrl,
-        symbol: trimmedSymbol || undefined,
+        symbol: form.getValues("symbol") || undefined,
         category: "web_page",
         persist: false,
       },
       {
         onSuccess: (result) => {
-          setContext((current) => {
-            const spacer = current.trim() ? "\n\n" : "";
-            return `${current}${spacer}${result.extraContext}`;
-          });
+          const currentContext = form.getValues("context") || "";
+          const spacer = currentContext.trim() ? "\n\n" : "";
+          form.setValue("context", `${currentContext}${spacer}${result.extraContext}`);
+          
+          setCollectedUrls((prev) => [...prev, trimmedUrl]);
           setSourceUrl("");
+          toast.success("URL context extracted and added.");
         },
         onError: (err) => {
           setUrlError(err.message);
+          toast.error("Failed to extract URL context.");
         },
       },
     );
+  };
+
+  const removeCollectedUrl = (urlToRemove: string) => {
+    setCollectedUrls((prev) => prev.filter(url => url !== urlToRemove));
+    // 界面上移除 tag 可以让用户知道这个源已经被移除，虽然我们不主动清理已追加的 context 文本
   };
 
   return (
@@ -69,85 +107,132 @@ export function AnalysisForm({ onSubmit, isPending, error }: AnalysisFormProps) 
       <CardHeader>
         <CardTitle>New Analysis</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <label className="text-sm text-zinc-300">Symbol</label>
-          <Input
-            placeholder="NVDA"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm text-zinc-300">Trade Date</label>
-          <Input
-            type="date"
-            value={tradeDate}
-            onChange={(e) => setTradeDate(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm text-zinc-300">Context</label>
-          <Textarea
-            placeholder="Add market context, thesis, or risk notes..."
-            value={context}
-            onChange={(e) => setContext(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-          <div className="flex items-center gap-2 text-sm text-zinc-300">
-            <Link2 className="h-4 w-4 text-blue-400" />
-            <span>URL Context</span>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              type="url"
-              placeholder="https://example.com/market-update"
-              value={sourceUrl}
-              onChange={(e) => {
-                setSourceUrl(e.target.value);
-                if (urlError) setUrlError(null);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  handleCollectUrl();
-                }
-              }}
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={handleCollectUrl}
-              disabled={isCollectingUrl || !sourceUrl.trim()}
-              aria-label="Add URL context"
-              title="Add URL context"
-            >
-              {isCollectingUrl ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+            
+            <FormField
+              control={form.control}
+              name="symbol"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-zinc-300">Symbol</FormLabel>
+                  <FormControl>
+                    <Input placeholder="NVDA" {...field} />
+                  </FormControl>
+                  <FormDescription className="text-zinc-500">
+                    The stock ticker symbol to analyze.
+                  </FormDescription>
+                  <FormMessage className="text-red-400" />
+                </FormItem>
               )}
+            />
+
+            <FormField
+              control={form.control}
+              name="tradeDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-zinc-300">Trade Date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage className="text-red-400" />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="context"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-zinc-300">Context</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Add market context, thesis, or risk notes..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription className="text-zinc-500">
+                    Manual context or insights gathered from URLs.
+                  </FormDescription>
+                  <FormMessage className="text-red-400" />
+                </FormItem>
+              )}
+            />
+
+            <div className="space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+              <div className="flex items-center gap-2 text-sm text-zinc-300">
+                <Link2 className="h-4 w-4 text-blue-400" />
+                <span>URL Context</span>
+              </div>
+              
+              <div className="flex gap-2">
+                <Input
+                  type="url"
+                  placeholder="https://example.com/market-update"
+                  value={sourceUrl}
+                  onChange={(e) => {
+                    setSourceUrl(e.target.value);
+                    if (urlError) setUrlError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleCollectUrl();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCollectUrl}
+                  disabled={isCollectingUrl || !sourceUrl.trim()}
+                  aria-label="Add URL context"
+                  title="Add URL context"
+                >
+                  {isCollectingUrl ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {urlError && <p className="text-xs text-red-400">{urlError}</p>}
+              
+              {collectedUrls.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {collectedUrls.map((url, idx) => (
+                    <span key={idx} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/10 text-blue-400 text-xs rounded-full border border-blue-500/20">
+                      <span className="max-w-[150px] truncate">{new URL(url).hostname}</span>
+                      <button 
+                        type="button" 
+                        onClick={() => removeCollectedUrl(url)}
+                        className="hover:text-blue-300"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {error && (
+              <div className="text-sm text-red-500 mt-2">Error: {error.message}</div>
+            )}
+
+            <Button
+              type="submit"
+              className="w-full mt-4"
+              disabled={isPending}
+            >
+              {isPending ? "Analyzing..." : "Start Analysis"}
             </Button>
-          </div>
-          {urlError && <p className="text-xs text-red-400">{urlError}</p>}
-        </div>
-
-        {error && (
-          <div className="text-sm text-red-500">Error: {error.message}</div>
-        )}
-
-        <Button
-          className="w-full"
-          onClick={handleSubmit}
-          disabled={isPending || !isValid}
-        >
-          {isPending ? "Analyzing..." : "Start Analysis"}
-        </Button>
+          </form>
+        </Form>
       </CardContent>
     </Card>
   );

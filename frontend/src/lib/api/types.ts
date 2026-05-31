@@ -40,6 +40,10 @@ export interface ReflectionOutput {
   guidance: string;
 }
 
+export interface StartAnalysisResponse {
+  runId: string;
+}
+
 export interface AnalysisResponse {
   analysts: AnalystResult[];
   decision: DecisionOutput;
