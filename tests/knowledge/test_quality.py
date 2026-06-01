@@ -48,6 +48,45 @@ class KnowledgeQualityAuditTests(unittest.TestCase):
         self.assertIn("missing_source_url", codes)
         self.assertIn("missing_published_at", codes)
 
+    def test_quality_audit_reports_foundation_schema_and_conflict_warnings(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            ingestor = KnowledgeIngestor(repository)
+            ingestor.ingest_text(
+                "foundation",
+                "allow_breakout_rule",
+                "Breakout entries may be allowed when trend and confirmation align.",
+                metadata={
+                    "foundation_category": "setup_playbook",
+                    "topic": "breakout entry",
+                    "applies_to": ["decision_agent"],
+                    "valid_when": ["trend confirmation aligns"],
+                    "rule_direction": "allow",
+                    "rule_id": "allow_breakout",
+                },
+            )
+            ingestor.ingest_text(
+                "foundation",
+                "block_breakout_rule",
+                "Breakout entries should be blocked when the same setup context is overextended.",
+                metadata={
+                    "foundation_category": "setup_playbook",
+                    "topic": "breakout entry",
+                    "applies_to": ["decision_agent"],
+                    "valid_when": ["trend confirmation aligns"],
+                    "rule_direction": "block",
+                    "rule_id": "block_breakout",
+                    "conflicts_with": ["missing_rule"],
+                },
+            )
+
+            summary = KnowledgeQualityAuditor(repository).audit(datasets=("foundation",))
+
+        self.assertTrue(summary.passed)
+        codes = {issue.code for issue in summary.issues}
+        self.assertIn("potential_static_conflict", codes)
+        self.assertIn("unknown_conflict_reference", codes)
+
 
 if __name__ == "__main__":
     unittest.main()

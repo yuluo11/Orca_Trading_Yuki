@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from .foundation import (
+    directions_conflict,
+    foundation_rule_key,
+    normalize_foundation_metadata,
+    validate_foundation_metadata,
+)
 from .repository import DatasetName, KnowledgeRepository
 
 QualitySeverity = Literal["warning", "error"]
@@ -69,6 +75,7 @@ class KnowledgeQualityAuditor:
         """Run a quality audit over processed records."""
         issues: list[KnowledgeQualityIssue] = []
         content_hash_index: dict[str, list[tuple[DatasetName, str]]] = {}
+        foundation_records: list[tuple[str, dict[str, Any]]] = []
         record_count = 0
 
         for dataset in datasets:
@@ -102,10 +109,21 @@ class KnowledgeQualityAuditor:
                         metadata=metadata,
                         max_age_days=dynamic_max_age_days,
                     )
+                elif dataset == "foundation":
+                    normalized_metadata = dict(metadata)
+                    normalize_foundation_metadata(normalized_metadata)
+                    _audit_foundation_metadata(
+                        issues,
+                        record_name=record_name,
+                        metadata=normalized_metadata,
+                    )
+                    foundation_records.append((record_name, normalized_metadata))
 
                 content_hash = metadata.get("content_hash")
                 if isinstance(content_hash, str) and content_hash:
                     content_hash_index.setdefault(content_hash, []).append((dataset, record_name))
+
+        _audit_foundation_conflicts(issues, foundation_records)
 
         for content_hash, records in content_hash_index.items():
             if len(records) <= 1:
@@ -166,6 +184,94 @@ def _audit_dynamic_metadata(
                         "warning",
                         "stale_dynamic_record",
                         f"Dynamic record is {age_days} days old.",
+                    )
+                )
+
+
+def _audit_foundation_metadata(
+    issues: list[KnowledgeQualityIssue],
+    *,
+    record_name: str,
+    metadata: dict[str, Any],
+) -> None:
+    for code in validate_foundation_metadata(metadata):
+        issues.append(
+            _issue(
+                "foundation",
+                record_name,
+                "error",
+                code,
+                f"Foundation metadata failed validation: {code}.",
+            )
+        )
+
+    if not metadata.get("applies_to"):
+        issues.append(
+            _issue(
+                "foundation",
+                record_name,
+                "warning",
+                "missing_applies_to",
+                "Foundation record should define applies_to for better retrieval boundaries.",
+            )
+        )
+    if not metadata.get("valid_when"):
+        issues.append(
+            _issue(
+                "foundation",
+                record_name,
+                "warning",
+                "missing_valid_when",
+                "Foundation record should define valid_when to avoid overbroad agent behavior.",
+            )
+        )
+
+
+def _audit_foundation_conflicts(
+    issues: list[KnowledgeQualityIssue],
+    records: list[tuple[str, dict[str, Any]]],
+) -> None:
+    by_rule_id = {
+        str(metadata.get("rule_id")): record_name
+        for record_name, metadata in records
+        if metadata.get("rule_id")
+    }
+    for record_name, metadata in records:
+        for conflict_id in metadata.get("conflicts_with", []) or ():
+            if conflict_id not in by_rule_id:
+                issues.append(
+                    _issue(
+                        "foundation",
+                        record_name,
+                        "warning",
+                        "unknown_conflict_reference",
+                        f"conflicts_with references an unknown rule_id: {conflict_id}.",
+                    )
+                )
+
+    for index, (left_name, left_metadata) in enumerate(records):
+        left_direction = str(left_metadata.get("rule_direction", "neutral"))
+        if left_direction in {"neutral", "observe"}:
+            continue
+        for right_name, right_metadata in records[index + 1 :]:
+            if foundation_rule_key(left_metadata) != foundation_rule_key(right_metadata):
+                continue
+            right_direction = str(right_metadata.get("rule_direction", "neutral"))
+            if directions_conflict(left_direction, right_direction):
+                message = (
+                    f"Potential static rule conflict with {right_name}: "
+                    f"{left_direction} vs {right_direction}."
+                )
+                issues.append(
+                    _issue("foundation", left_name, "warning", "potential_static_conflict", message)
+                )
+                issues.append(
+                    _issue(
+                        "foundation",
+                        right_name,
+                        "warning",
+                        "potential_static_conflict",
+                        message.replace(right_name, left_name),
                     )
                 )
 

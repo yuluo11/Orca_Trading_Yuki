@@ -12,6 +12,7 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 from .policy import DEFAULT_KNOWLEDGE_POLICY, KnowledgePolicy
+from .foundation import normalize_foundation_metadata
 from .indexing import KnowledgeIndexer
 from .record import KnowledgeMetadata, ProcessedKnowledgeRecord
 from .repository import DatasetName, KnowledgeRepository
@@ -328,6 +329,8 @@ class KnowledgeIngestor:
         prepared.setdefault("content_hash", self._text_hash(text))
         prepared.setdefault("content_length", len(text))
         self._normalize_metadata_values(prepared)
+        if dataset == "foundation":
+            normalize_foundation_metadata(prepared)
         return prepared
 
     def _update_manifest(

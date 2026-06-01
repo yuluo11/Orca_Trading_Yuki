@@ -26,6 +26,18 @@ class KnowledgeMetadata(TypedDict, total=False):
     extraction_method: str
     content_hash: str
     content_length: int
+    foundation_schema_version: str
+    foundation_category: str
+    principle_type: str
+    applies_to: list[str]
+    valid_when: list[str]
+    invalid_when: list[str]
+    priority: str
+    status: str
+    rule_direction: str
+    owner_defined: bool
+    rule_id: str
+    conflicts_with: list[str]
     reliability: KnowledgeReliability
     time_sensitivity: KnowledgeTimeSensitivity
     dataset: KnowledgeDataset

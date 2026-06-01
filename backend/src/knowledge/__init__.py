@@ -12,6 +12,13 @@ from .evaluation import (
     KnowledgeEvalSummary,
     KnowledgeRetrievalEvaluator,
 )
+from .foundation import (
+    FOUNDATION_CATEGORIES,
+    FOUNDATION_PRINCIPLE_TYPES,
+    FOUNDATION_PRIORITIES,
+    FOUNDATION_RULE_DIRECTIONS,
+    FOUNDATION_STATUSES,
+)
 from .quality import KnowledgeQualityAuditor, KnowledgeQualityIssue, KnowledgeQualitySummary
 from .source_governance import (
     DEFAULT_DYNAMIC_SOURCE_GOVERNANCE,
@@ -34,6 +41,11 @@ __all__ = [
     "DataSourceRule",
     "DynamicKnowledgeCrawlScheduler",
     "DynamicSourceScheduleStore",
+    "FOUNDATION_CATEGORIES",
+    "FOUNDATION_PRINCIPLE_TYPES",
+    "FOUNDATION_PRIORITIES",
+    "FOUNDATION_RULE_DIRECTIONS",
+    "FOUNDATION_STATUSES",
     "DynamicSourceGovernancePolicy",
     "KnowledgeCollectorService",
     "KnowledgeEvalCase",
