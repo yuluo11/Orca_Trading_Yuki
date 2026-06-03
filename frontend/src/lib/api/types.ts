@@ -61,3 +61,4 @@ export interface HistoryRun {
 
 export type StatusFilter = "all" | "completed" | "failed" | "running";
 export type RecommendationFilter = "all" | "BUY" | "SELL" | "HOLD";
+export type SortOption = "date-desc" | "date-asc" | "symbol-asc" | "symbol-desc";
