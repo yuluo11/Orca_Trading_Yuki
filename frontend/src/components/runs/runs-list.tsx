@@ -6,13 +6,17 @@ import { RunStatusBadge, RunStatusIcon } from "./run-status-badge";
 
 interface RunsListProps {
   runs: HistoryRun[];
+  totalRuns?: number;
 }
 
-export function RunsList({ runs }: RunsListProps) {
+export function RunsList({ runs, totalRuns }: RunsListProps) {
   if (runs.length === 0) {
+    const isFiltered = totalRuns !== undefined && totalRuns > 0;
     return (
       <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
-        No history runs found.
+        {isFiltered 
+          ? "No runs match your current filters. Try clearing them." 
+          : "No history runs found. Go run your first analysis!"}
       </div>
     );
   }

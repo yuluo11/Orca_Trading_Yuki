@@ -58,3 +58,6 @@ export interface HistoryRun {
   createdAt: string;
   recommendation?: string;
 }
+
+export type StatusFilter = "all" | "completed" | "failed" | "running";
+export type RecommendationFilter = "all" | "BUY" | "SELL" | "HOLD";
