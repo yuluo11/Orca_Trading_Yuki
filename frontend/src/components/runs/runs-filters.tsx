@@ -1,8 +1,7 @@
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
-import { StatusFilter, RecommendationFilter } from "@/lib/api/types";
+import { StatusFilter, RecommendationFilter, SortOption } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
-
 const STATUS_FILTERS: StatusFilter[] = ["all", "completed", "failed", "running"];
 const REC_FILTERS: RecommendationFilter[] = ["all", "BUY", "SELL", "HOLD"];
 
@@ -13,6 +12,8 @@ interface RunsFiltersProps {
   onStatusChange: (status: StatusFilter) => void;
   recommendationFilter: RecommendationFilter;
   onRecommendationChange: (rec: RecommendationFilter) => void;
+  sortBy: SortOption;
+  onSortChange: (sort: SortOption) => void;
   onClear: () => void;
 }
 
@@ -23,12 +24,14 @@ export function RunsFilters({
   onStatusChange,
   recommendationFilter,
   onRecommendationChange,
+  sortBy,
+  onSortChange,
   onClear,
 }: RunsFiltersProps) {
-  const hasFilters = searchQuery !== "" || statusFilter !== "all" || recommendationFilter !== "all";
+  const hasFilters = searchQuery !== "" || statusFilter !== "all" || recommendationFilter !== "all" || sortBy !== "date-desc";
 
   return (
-    <div className="flex flex-col sm:flex-row items-center gap-3">
+    <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 w-full">
       <div className="relative w-full sm:w-64">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
         <Input
@@ -39,7 +42,7 @@ export function RunsFilters({
         />
       </div>
       
-      <div className="flex bg-zinc-900/50 border border-zinc-800 rounded-md p-1">
+      <div className="flex flex-wrap bg-zinc-900/50 border border-zinc-800 rounded-md p-1 gap-1">
         {STATUS_FILTERS.map((status) => (
           <button
             key={status}
@@ -55,7 +58,7 @@ export function RunsFilters({
         ))}
       </div>
 
-      <div className="flex bg-zinc-900/50 border border-zinc-800 rounded-md p-1">
+      <div className="flex flex-wrap bg-zinc-900/50 border border-zinc-800 rounded-md p-1 gap-1">
         {REC_FILTERS.map((rec) => (
           <button
             key={rec}
@@ -69,6 +72,19 @@ export function RunsFilters({
             {rec === "all" ? "All Recs" : rec}
           </button>
         ))}
+      </div>
+
+      <div className="flex items-center bg-zinc-900/50 border border-zinc-800 rounded-md px-1">
+        <select
+          value={sortBy}
+          onChange={(e) => onSortChange(e.target.value as SortOption)}
+          className="h-8 bg-transparent text-xs text-zinc-300 focus:outline-none cursor-pointer"
+        >
+          <option value="date-desc">Newest First</option>
+          <option value="date-asc">Oldest First</option>
+          <option value="symbol-asc">Symbol (A-Z)</option>
+          <option value="symbol-desc">Symbol (Z-A)</option>
+        </select>
       </div>
 
       {hasFilters && (
