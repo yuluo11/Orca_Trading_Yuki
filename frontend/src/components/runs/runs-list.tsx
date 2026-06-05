@@ -44,9 +44,14 @@ function RunCard({ run }: RunCardProps) {
               <RunStatusIcon status={run.status} />
             </div>
             <div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <h3 className="font-semibold text-zinc-100 group-hover:text-blue-400 transition-colors">{run.symbol}</h3>
                 <RunStatusBadge status={run.status} />
+                {run.recommendation && (
+                  <span className="sm:hidden text-xs font-semibold px-2 py-0.5 bg-zinc-800 text-zinc-300 rounded">
+                    {run.recommendation}
+                  </span>
+                )}
               </div>
               <p className="text-sm text-zinc-400 mt-1 flex items-center gap-2">
                 <span>Trade Date: {run.tradeDate}</span>
@@ -57,7 +62,7 @@ function RunCard({ run }: RunCardProps) {
           </div>
           <div className="flex items-center gap-6">
             {run.recommendation && (
-              <div className="text-right">
+              <div className="text-right hidden sm:block">
                 <p className="text-xs text-zinc-500 mb-1">Decision</p>
                 <span className="text-sm font-semibold px-2 py-1 bg-zinc-800 rounded text-zinc-300">
                   {run.recommendation}

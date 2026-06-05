@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useGetHistory } from "@/lib/api/hooks";
 import { Card, CardContent } from "@/components/ui/card";
 import { Clock } from "lucide-react";
@@ -7,8 +8,9 @@ import { RunsList } from "@/components/runs/runs-list";
 import { RunsFilters } from "@/components/runs/runs-filters";
 import { useRunsFilters } from "@/hooks/use-runs-filters";
 import { RunsStats } from "@/components/runs/runs-stats";
+import { RunsPagination } from "@/components/runs/runs-pagination";
 
-export default function RunsPage() {
+function RunsPageContent() {
   const { data: runs, isLoading, error } = useGetHistory();
   
   const {
@@ -22,6 +24,10 @@ export default function RunsPage() {
     setSortBy,
     handleClearFilters,
     filteredRuns,
+    paginatedRuns,
+    currentPage,
+    setCurrentPage,
+    totalPages,
   } = useRunsFilters(runs);
 
   return (
@@ -71,8 +77,27 @@ export default function RunsPage() {
       )}
 
       {!isLoading && !error && filteredRuns && runs && (
-        <RunsList runs={filteredRuns} totalRuns={runs.length} />
+        <div className="flex flex-col gap-4">
+          <RunsList runs={paginatedRuns} totalRuns={runs.length} />
+          <RunsPagination 
+            currentPage={currentPage}
+            totalPages={totalPages}
+            setCurrentPage={setCurrentPage}
+          />
+        </div>
       )}
     </main>
+  );
+}
+
+export default function RunsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-48">
+        <Clock className="w-8 h-8 text-blue-500 animate-spin" />
+      </div>
+    }>
+      <RunsPageContent />
+    </Suspense>
   );
 }

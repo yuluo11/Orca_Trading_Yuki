@@ -31,7 +31,7 @@ export function RunsFilters({
   const hasFilters = searchQuery !== "" || statusFilter !== "all" || recommendationFilter !== "all" || sortBy !== "date-desc";
 
   return (
-    <div className="flex flex-col sm:flex-row items-center gap-3">
+    <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 w-full">
       <div className="relative w-full sm:w-64">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
         <Input
@@ -42,7 +42,7 @@ export function RunsFilters({
         />
       </div>
       
-      <div className="flex bg-zinc-900/50 border border-zinc-800 rounded-md p-1">
+      <div className="flex flex-wrap bg-zinc-900/50 border border-zinc-800 rounded-md p-1 gap-1">
         {STATUS_FILTERS.map((status) => (
           <button
             key={status}
@@ -58,7 +58,7 @@ export function RunsFilters({
         ))}
       </div>
 
-      <div className="flex bg-zinc-900/50 border border-zinc-800 rounded-md p-1">
+      <div className="flex flex-wrap bg-zinc-900/50 border border-zinc-800 rounded-md p-1 gap-1">
         {REC_FILTERS.map((rec) => (
           <button
             key={rec}
