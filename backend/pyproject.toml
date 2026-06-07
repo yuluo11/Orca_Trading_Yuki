@@ -14,7 +14,15 @@ dependencies = [
     "uvicorn>=0.30.0,<1.0.0",
 ]
 
+[project.scripts]
+orca-knowledge-eval = "backend.src.knowledge.evaluation_cli:main"
+orca-knowledge-scheduler = "backend.src.knowledge.source_scheduler_cli:main"
+
 [project.optional-dependencies]
+api = [
+    "fastapi>=0.110",
+    "uvicorn>=0.25",
+]
 dev = [
     "pytest>=8.0",
 ]

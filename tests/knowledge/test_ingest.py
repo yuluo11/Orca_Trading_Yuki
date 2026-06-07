@@ -20,6 +20,11 @@ class KnowledgeIngestorTests(unittest.TestCase):
                 "foundation",
                 "nvda-market-note",
                 "  Disclaimer: internal draft only  \n\nAlpha   signal\t\tremains active.\r\n\r\n\r\nPage 1 of 3\n",
+                metadata={
+                    "category": "Research Notes",
+                    "source_url": "https://Research.Example.com/nvda",
+                    "tags": [" AI ", "ai", "Catalyst"],
+                },
             )
 
             record = repository.load_processed_record("foundation", record_path.stem)
@@ -29,6 +34,11 @@ class KnowledgeIngestorTests(unittest.TestCase):
         self.assertEqual("medium", record["metadata"]["reliability"])
         self.assertEqual("low", record["metadata"]["time_sensitivity"])
         self.assertEqual("foundation", record["metadata"]["dataset"])
+        self.assertEqual("research_notes", record["metadata"]["category"])
+        self.assertEqual("research.example.com", record["metadata"]["source_domain"])
+        self.assertEqual(["ai", "catalyst"], record["metadata"]["tags"])
+        self.assertEqual(len(record["text"]), record["metadata"]["content_length"])
+        self.assertIn("content_hash", record["metadata"])
 
     def test_ingest_text_skips_exact_duplicate_content_in_same_dataset(self) -> None:
         with TemporaryDirectory() as tmpdir:
@@ -123,6 +133,39 @@ class KnowledgeIngestorTests(unittest.TestCase):
 
         self.assertNotIn("symbol", record["metadata"])
         self.assertEqual("setup note", record["metadata"]["topic"])
+
+    def test_foundation_ingest_normalizes_static_knowledge_schema(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            repository = KnowledgeRepository(data_root=Path(tmpdir))
+            ingestor = KnowledgeIngestor(repository)
+
+            record_path = ingestor.ingest_text(
+                "foundation",
+                "risk_position_sizing_rule",
+                "Position sizing must be reduced when setup invalidation is unclear.",
+                metadata={
+                    "foundation_category": "Risk Framework",
+                    "principle_type": "Rule",
+                    "applies_to": "Decision Agent, Position Sizing",
+                    "valid_when": ["setup invalidation is unclear"],
+                    "invalid_when": ["risk budget is unavailable"],
+                    "priority": "High",
+                    "rule_direction": "Reduce",
+                    "owner_defined": True,
+                    "rule_id": "Risk Position Sizing 001",
+                },
+            )
+            record = repository.load_processed_record("foundation", record_path.stem)
+
+        metadata = record["metadata"]
+        self.assertEqual("risk_framework", metadata["foundation_category"])
+        self.assertEqual("risk_framework", metadata["category"])
+        self.assertEqual("rule", metadata["principle_type"])
+        self.assertEqual(["decision agent", "position sizing"], metadata["applies_to"])
+        self.assertEqual(["setup invalidation is unclear"], metadata["valid_when"])
+        self.assertEqual("high", metadata["priority"])
+        self.assertEqual("reduce", metadata["rule_direction"])
+        self.assertEqual("risk_position_sizing_001", metadata["rule_id"])
 
     def test_ingest_text_skips_similar_content_when_policy_enables_similarity_detection(self) -> None:
         with TemporaryDirectory() as tmpdir:

@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import math
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .documents import load_dataset_documents
 from .repository import DatasetName, KnowledgeRepository
+
+VectorBackendKind = Literal["auto", "local", "persisted_token", "langchain_inmemory"]
+
+
+@dataclass(frozen=True, slots=True)
+class VectorBackendConfig:
+    """Configuration for choosing a knowledge retrieval backend."""
+
+    kind: VectorBackendKind = "auto"
+    index_name: str | None = None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -33,6 +44,14 @@ def _build_term_weights(text: str) -> dict[str, float]:
         term: count / total
         for term, count in counts.items()
     }
+
+
+def _build_term_counts(text: str) -> dict[str, int]:
+    """Build raw term counts for BM25-style sparse retrieval."""
+    counts: dict[str, int] = {}
+    for term in _tokenize(text):
+        counts[term] = counts.get(term, 0) + 1
+    return counts
 
 
 def _cosine_similarity(left: dict[str, float], right: dict[str, float]) -> float:
@@ -61,6 +80,15 @@ class LocalVectorIndex:
         **kwargs: Any,
     ) -> list[Any]:
         """Run a simple term-overlap search over indexed documents."""
+        return [document for document, _ in self.similarity_search_with_scores(query, k=k, **kwargs)]
+
+    def similarity_search_with_scores(
+        self,
+        query: str,
+        k: int = 4,
+        **kwargs: Any,
+    ) -> list[tuple[Any, float]]:
+        """Run local search and keep scores for evaluation/debugging."""
         metadata_filter = kwargs.get("filter")
         query_terms = {term for term in query.lower().split() if term}
         scored_documents: list[tuple[int, Any]] = []
@@ -87,7 +115,7 @@ class LocalVectorIndex:
                 scored_documents.append((score, document))
 
         scored_documents.sort(key=lambda item: item[0], reverse=True)
-        return [document for _, document in scored_documents[:k]]
+        return [(document, float(score)) for score, document in scored_documents[:k]]
 
 
 class PersistedTokenVectorIndex:
@@ -95,6 +123,9 @@ class PersistedTokenVectorIndex:
 
     def __init__(self, entries: Sequence[dict[str, Any]]) -> None:
         self.entries = list(entries)
+        self.document_count = len(self.entries)
+        self.average_document_length = self._average_document_length()
+        self.document_frequencies = self._document_frequencies()
 
     def similarity_search(
         self,
@@ -103,7 +134,20 @@ class PersistedTokenVectorIndex:
         **kwargs: Any,
     ) -> list[Any]:
         """Run cosine-style sparse-vector retrieval over persisted entries."""
+        return [
+            document
+            for document, _ in self.similarity_search_with_scores(query, k=k, **kwargs)
+        ]
+
+    def similarity_search_with_scores(
+        self,
+        query: str,
+        k: int = 4,
+        **kwargs: Any,
+    ) -> list[tuple[Any, float]]:
+        """Run hybrid sparse-vector retrieval and return result scores."""
         metadata_filter = kwargs.get("filter")
+        query_terms = _tokenize(query)
         query_weights = _build_term_weights(query)
         scored_entries: list[tuple[float, dict[str, Any]]] = []
 
@@ -112,12 +156,66 @@ class PersistedTokenVectorIndex:
             if not _matches_metadata_filter(metadata, metadata_filter):
                 continue
 
-            score = _cosine_similarity(query_weights, entry.get("term_weights", {}))
+            score = self._hybrid_score(entry, query_terms=query_terms, query_weights=query_weights)
             if score > 0:
                 scored_entries.append((score, entry))
 
         scored_entries.sort(key=lambda item: item[0], reverse=True)
-        return [_entry_to_document(entry) for _, entry in scored_entries[:k]]
+        return [
+            (_entry_to_document(entry), score)
+            for score, entry in scored_entries[:k]
+        ]
+
+    def _hybrid_score(
+        self,
+        entry: dict[str, Any],
+        *,
+        query_terms: list[str],
+        query_weights: dict[str, float],
+    ) -> float:
+        """Combine cosine similarity, BM25-style term ranking, and metadata boosts."""
+        cosine_score = _cosine_similarity(query_weights, entry.get("term_weights", {}))
+        bm25_score = self._bm25_score(entry, query_terms)
+        phrase_score = _phrase_boost(entry, query_terms)
+        metadata_score = _metadata_boost(entry, query_terms)
+        return cosine_score + bm25_score + phrase_score + metadata_score
+
+    def _bm25_score(self, entry: dict[str, Any], query_terms: list[str]) -> float:
+        term_counts = _entry_term_counts(entry)
+        if not term_counts or not query_terms or self.document_count == 0:
+            return 0.0
+
+        document_length = int(entry.get("document_length") or sum(term_counts.values()) or 1)
+        average_length = self.average_document_length or 1.0
+        k1 = 1.5
+        b = 0.75
+        score = 0.0
+        for term in set(query_terms):
+            frequency = term_counts.get(term, 0)
+            if frequency == 0:
+                continue
+            document_frequency = self.document_frequencies.get(term, 0)
+            idf = math.log(1 + (self.document_count - document_frequency + 0.5) / (document_frequency + 0.5))
+            denominator = frequency + k1 * (1 - b + b * document_length / average_length)
+            score += idf * (frequency * (k1 + 1)) / denominator
+        return score
+
+    def _average_document_length(self) -> float:
+        lengths = [
+            int(entry.get("document_length") or sum(_entry_term_counts(entry).values()))
+            for entry in self.entries
+        ]
+        lengths = [length for length in lengths if length > 0]
+        if not lengths:
+            return 0.0
+        return sum(lengths) / len(lengths)
+
+    def _document_frequencies(self) -> dict[str, int]:
+        frequencies: dict[str, int] = {}
+        for entry in self.entries:
+            for term in _entry_term_counts(entry):
+                frequencies[term] = frequencies.get(term, 0) + 1
+        return frequencies
 
 
 class KnowledgeIndexer:
@@ -157,6 +255,32 @@ class KnowledgeIndexer:
                 )
 
         return PersistedTokenVectorIndex(persisted_entries)
+
+    def build_configured_backend(
+        self,
+        config: VectorBackendConfig | None = None,
+        *,
+        datasets: Sequence[DatasetName] | None = None,
+        embeddings: Any | None = None,
+    ) -> Any:
+        """Build a retrieval backend from a small backend config."""
+        resolved_config = config or VectorBackendConfig()
+        if resolved_config.kind == "auto":
+            return self.load_or_build_default_backend(datasets)
+        if resolved_config.kind == "local":
+            return self.build_local_index(datasets)
+        if resolved_config.kind == "persisted_token":
+            if resolved_config.index_name:
+                try:
+                    return self.load_persisted_token_vector_index(resolved_config.index_name)
+                except FileNotFoundError:
+                    pass
+            return self.build_persisted_token_vector_index(datasets)
+        if resolved_config.kind == "langchain_inmemory":
+            if embeddings is None:
+                raise ValueError("embeddings are required for langchain_inmemory backend")
+            return self.build_inmemory_vector_store(embeddings, datasets)
+        raise ValueError(f"Unsupported vector backend kind: {resolved_config.kind}")
 
     def build_persisted_token_vector_index(
         self,
@@ -269,9 +393,12 @@ def _document_to_index_entry(document: Any) -> dict[str, Any]:
             metadata.get("category", ""),
         )
     )
+    term_counts = _build_term_counts(haystack)
     return {
         "page_content": page_content,
         "metadata": metadata,
+        "term_counts": term_counts,
+        "document_length": sum(term_counts.values()),
         "term_weights": _build_term_weights(haystack),
     }
 
@@ -292,3 +419,57 @@ def _entry_to_document(entry: dict[str, Any]) -> Any:
         page_content=str(entry.get("page_content", "")),
         metadata=dict(entry.get("metadata", {})),
     )
+
+
+def _entry_term_counts(entry: dict[str, Any]) -> dict[str, int]:
+    counts = entry.get("term_counts")
+    if isinstance(counts, dict):
+        return {str(term): int(count) for term, count in counts.items()}
+    weights = entry.get("term_weights", {})
+    if isinstance(weights, dict):
+        return {str(term): 1 for term in weights}
+    return {}
+
+
+def _phrase_boost(entry: dict[str, Any], query_terms: list[str]) -> float:
+    if len(query_terms) < 2:
+        return 0.0
+    query_phrase = " ".join(query_terms)
+    haystack = _entry_haystack(entry)
+    if query_phrase and query_phrase in haystack:
+        return 1.0
+    adjacent_pairs = zip(query_terms, query_terms[1:])
+    return sum(0.15 for left, right in adjacent_pairs if f"{left} {right}" in haystack)
+
+
+def _metadata_boost(entry: dict[str, Any], query_terms: list[str]) -> float:
+    if not query_terms:
+        return 0.0
+    metadata = dict(entry.get("metadata", {}))
+    weighted_fields = (
+        ("title", 0.4),
+        ("symbol", 0.3),
+        ("topic", 0.2),
+        ("category", 0.1),
+    )
+    score = 0.0
+    for field_name, weight in weighted_fields:
+        value = str(metadata.get(field_name, "")).lower()
+        if not value:
+            continue
+        score += sum(weight for term in set(query_terms) if term in value)
+    return score
+
+
+def _entry_haystack(entry: dict[str, Any]) -> str:
+    metadata = dict(entry.get("metadata", {}))
+    return " ".join(
+        str(value)
+        for value in (
+            entry.get("page_content", ""),
+            metadata.get("title", ""),
+            metadata.get("symbol", ""),
+            metadata.get("topic", ""),
+            metadata.get("category", ""),
+        )
+    ).lower()

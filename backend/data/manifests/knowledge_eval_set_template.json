@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "notes": "User-fixed retrieval checks. Keep cases disabled until you want them to become regression checks.",
+  "cases": [
+    {
+      "case_id": "nvda_event_fade_risk",
+      "enabled": false,
+      "query": "NVDA event fade risk",
+      "datasets": ["dynamic"],
+      "k": 3,
+      "min_results": 1,
+      "expected_symbols": ["NVDA"],
+      "expected_categories": ["news", "research"],
+      "must_include_terms": ["fade", "risk"]
+    },
+    {
+      "case_id": "macro_rate_pressure",
+      "enabled": false,
+      "query": "macro rate pressure risk appetite",
+      "datasets": ["foundation", "dynamic"],
+      "k": 3,
+      "min_results": 1,
+      "expected_categories": ["macro"],
+      "must_include_terms": ["rate", "risk"]
+    }
+  ]
+}

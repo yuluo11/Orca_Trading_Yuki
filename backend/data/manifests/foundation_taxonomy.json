@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "notes": "Static foundation knowledge taxonomy. Users can add content, but should keep these category ids stable once agents rely on them.",
+  "categories": [
+    {
+      "id": "market_structure",
+      "purpose": "Durable market regime, liquidity, trend, breadth, and structure principles."
+    },
+    {
+      "id": "risk_framework",
+      "purpose": "Risk limits, drawdown handling, invalidation, and exposure control."
+    },
+    {
+      "id": "setup_playbook",
+      "purpose": "Reusable setup definitions and conditions for taking or avoiding trades."
+    },
+    {
+      "id": "position_sizing",
+      "purpose": "Sizing rules, scale-in/out logic, and risk budget allocation."
+    },
+    {
+      "id": "macro_framework",
+      "purpose": "Macro conditions, rate/liquidity context, and cross-asset priors."
+    },
+    {
+      "id": "indicator_explanation",
+      "purpose": "Indicator definitions, limitations, and interpretation boundaries."
+    },
+    {
+      "id": "agent_rules",
+      "purpose": "Agent behavior boundaries and decision permissions."
+    },
+    {
+      "id": "execution_rules",
+      "purpose": "Order timing, execution constraints, slippage, and operational rules."
+    },
+    {
+      "id": "reflection_principles",
+      "purpose": "Post-trade learning, review, and self-iteration principles."
+    },
+    {
+      "id": "research_notes",
+      "purpose": "Durable research notes that do not fit a stricter rule category yet."
+    }
+  ],
+  "schema_fields": {
+    "foundation_category": "One stable category id from categories.",
+    "principle_type": "principle | rule | playbook | checklist | definition | boundary",
+    "applies_to": "List of instruments, agents, setups, or contexts this record applies to.",
+    "valid_when": "List of conditions where this knowledge is valid.",
+    "invalid_when": "List of conditions where this knowledge should not be applied.",
+    "priority": "critical | high | medium | low",
+    "status": "draft | active | deprecated",
+    "rule_direction": "allow | block | reduce | increase | observe | neutral",
+    "conflicts_with": "Optional list of rule_id values that this record intentionally conflicts with."
+  }
+}

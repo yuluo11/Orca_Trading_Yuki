@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "notes": "User-fixed static knowledge retrieval checks. Enable cases when you want them to become regression checks.",
+  "cases": [
+    {
+      "case_id": "risk_framework_position_sizing",
+      "enabled": false,
+      "query": "position sizing drawdown risk framework",
+      "datasets": ["foundation"],
+      "k": 3,
+      "min_results": 1,
+      "expected_categories": ["risk_framework", "position_sizing"],
+      "must_include_terms": ["risk"]
+    },
+    {
+      "case_id": "agent_boundary_no_unbounded_trade",
+      "enabled": false,
+      "query": "agent boundary avoid unbounded trade recommendation",
+      "datasets": ["foundation"],
+      "k": 3,
+      "min_results": 1,
+      "expected_categories": ["agent_rules"],
+      "must_include_terms": ["boundary"]
+    }
+  ]
+}
