@@ -1,1 +1,1 @@
-"""API adapter tests."""
+"""API tests."""

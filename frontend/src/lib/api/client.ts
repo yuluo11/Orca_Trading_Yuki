@@ -1,5 +1,6 @@
 import { AnalysisRequest, AnalysisResponse, StartAnalysisResponse, HistoryRun, WebPageContextRequest, WebPageContextResponse } from "./types";
 import { mockStartAnalysis, mockGetHistory, mockGetRunDetails, mockCollectWebPageContext } from "./mock";
+import { apiFetch } from "./fetch";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 // 默认如果环境变量明确开启 mock，或者根本没配置 API URL 时，回退到 mock 模式
@@ -14,18 +15,10 @@ export const apiClient = {
       return mockStartAnalysis(data);
     }
 
-    // 真实的 API 网络请求逻辑
-    const response = await fetch(`${API_BASE_URL}/analysis`, {
+    return apiFetch<StartAnalysisResponse>(`${API_BASE_URL}/analysis`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
   },
 
   /**
@@ -36,16 +29,9 @@ export const apiClient = {
       return mockGetHistory();
     }
 
-    // 这里可以填写真实的获取历史记录 API
-    const response = await fetch(`${API_BASE_URL}/runs`, {
+    return apiFetch<HistoryRun[]>(`${API_BASE_URL}/runs`, {
       method: "GET",
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
   },
 
   /**
@@ -56,15 +42,9 @@ export const apiClient = {
       return mockGetRunDetails(id);
     }
 
-    const response = await fetch(`${API_BASE_URL}/runs/${id}`, {
+    return apiFetch<AnalysisResponse>(`${API_BASE_URL}/runs/${id}`, {
       method: "GET",
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
   },
 
   /**
@@ -75,16 +55,9 @@ export const apiClient = {
       return mockCollectWebPageContext(data);
     }
 
-    const response = await fetch(`${API_BASE_URL}/knowledge/web-page`, {
+    return apiFetch<WebPageContextResponse>(`${API_BASE_URL}/knowledge/web-page`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-
-    if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
-    }
-
-    return response.json();
   }
 };
