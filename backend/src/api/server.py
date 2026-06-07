@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -14,10 +17,12 @@ from .contracts import (
     WebPageContextResponse,
 )
 from .run_store import InMemoryRunStore, RunNotFoundError
+from .sqlite_run_store import SQLiteRunStore
 
 
-def create_app(store: InMemoryRunStore | None = None) -> FastAPI:
-    run_store = store or InMemoryRunStore()
+def create_app(store: InMemoryRunStore | SQLiteRunStore | None = None) -> FastAPI:
+    run_store = store or _build_default_store()
+
     api = FastAPI(title="Orca Trading Yuki API", version="0.1.0")
 
     api.add_middleware(
@@ -59,6 +64,12 @@ def create_app(store: InMemoryRunStore | None = None) -> FastAPI:
         return run_store.collect_web_page_context(request)
 
     return api
+
+
+def _build_default_store() -> SQLiteRunStore:
+    db_path = os.environ.get("ORCA_RUNS_DB_PATH")
+    resolved_path = Path(db_path) if db_path else Path(__file__).resolve().parents[2] / "runs.db"
+    return SQLiteRunStore(db_path=resolved_path)
 
 
 app = create_app()
