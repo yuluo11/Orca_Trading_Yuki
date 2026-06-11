@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/form";
 import { useCollectWebPageContext } from "@/lib/api/hooks";
 import { AnalysisRequest } from "@/lib/api/types";
+import { isBackendUnavailableError, BACKEND_UNAVAILABLE_MESSAGE } from "@/lib/api/errors";
 
 const formSchema = z.object({
   symbol: z.string().min(1, "Symbol is required").toUpperCase(),
@@ -221,7 +222,15 @@ export function AnalysisForm({ onSubmit, isPending, error }: AnalysisFormProps) 
             </div>
 
             {error && (
-              <div className="text-sm text-red-500 mt-2">Error: {error.message}</div>
+              <div className="text-sm text-red-500 mt-2">
+                {isBackendUnavailableError(error) ? (
+                  <>
+                    <p className="font-medium">{BACKEND_UNAVAILABLE_MESSAGE}</p>
+                  </>
+                ) : (
+                  `Error: ${error.message}`
+                )}
+              </div>
             )}
 
             <Button
@@ -229,7 +238,14 @@ export function AnalysisForm({ onSubmit, isPending, error }: AnalysisFormProps) 
               className="w-full mt-4"
               disabled={isPending}
             >
-              {isPending ? "Analyzing..." : "Start Analysis"}
+              {isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Running Analysis...
+                </>
+              ) : (
+                "Start Analysis"
+              )}
             </Button>
           </form>
         </Form>

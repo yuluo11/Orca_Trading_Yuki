@@ -2,7 +2,7 @@ import { AnalysisRequest, AnalysisResponse, StartAnalysisResponse, HistoryRun, W
 import { mockStartAnalysis, mockGetHistory, mockGetRunDetails, mockCollectWebPageContext } from "./mock";
 import { apiFetch } from "./fetch";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 // 默认如果环境变量明确开启 mock，或者根本没配置 API URL 时，回退到 mock 模式
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK_API === "true" || !process.env.NEXT_PUBLIC_API_URL;
 

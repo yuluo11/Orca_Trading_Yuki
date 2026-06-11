@@ -1,6 +1,7 @@
 import { useMutation, useQuery, UseMutationOptions, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "./client";
 import { AnalysisRequest, AnalysisResponse, StartAnalysisResponse, HistoryRun, WebPageContextRequest, WebPageContextResponse } from "./types";
+import { shouldRetryApiQuery } from "./errors";
 
 /**
  * 启动分析的 Mutation Hook
@@ -29,6 +30,7 @@ export function useGetHistory() {
   return useQuery<HistoryRun[], Error>({
     queryKey: ["historyRuns"],
     queryFn: () => apiClient.getHistoryRuns(),
+    retry: shouldRetryApiQuery,
   });
 }
 
@@ -40,6 +42,7 @@ export function useGetRunDetails(id: string) {
     queryKey: ["runDetails", id],
     queryFn: () => apiClient.getRunDetails(id),
     enabled: !!id,
+    retry: shouldRetryApiQuery,
   });
 }
 
