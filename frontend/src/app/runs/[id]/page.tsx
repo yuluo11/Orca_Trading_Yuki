@@ -44,6 +44,7 @@ export default function RunDetailsPage({ params }: { params: Promise<{ id: strin
             isPending={isDetailsPending}
             error={detailsError}
             enableTabs
+            runStatus={currentRun?.status}
           />
         </Suspense>
       </div>

@@ -7,6 +7,7 @@ import { ErrorState } from "./states/error-state";
 import { LoadingState } from "./states/loading-state";
 import { InitialState } from "./states/initial-state";
 import { EmptyState } from "./states/empty-state";
+import { FailedRunState } from "./states/failed-run-state";
 
 import { AnalystsSection } from "./sections/analysts-section";
 import { DecisionSection } from "./sections/decision-section";
@@ -20,6 +21,7 @@ interface AnalysisPreviewProps {
   isPending: boolean;
   error: Error | null;
   enableTabs?: boolean;
+  runStatus?: "completed" | "failed" | "running";
 }
 
 export function AnalysisPreview(props: AnalysisPreviewProps) {
@@ -39,9 +41,10 @@ interface InnerProps extends AnalysisPreviewProps {
   onTabChange: (tab: AnalysisTabValue) => void;
 }
 
-function AnalysisPreviewInner({ data, isPending, error, enableTabs, tab, onTabChange }: InnerProps) {
+function AnalysisPreviewInner({ data, isPending, error, enableTabs, runStatus, tab, onTabChange }: InnerProps) {
   const renderContent = () => {
     if (error) return <ErrorState error={error} />;
+    if (runStatus === "failed") return <FailedRunState />;
     if (isPending) return <LoadingState />;
     if (!data) return <InitialState />;
 
@@ -62,7 +65,7 @@ function AnalysisPreviewInner({ data, isPending, error, enableTabs, tab, onTabCh
       <CardHeader className="pb-4 border-b border-zinc-800">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <CardTitle>Analysis Preview</CardTitle>
-          {enableTabs && (
+          {enableTabs && runStatus !== "failed" && (
             <AnalysisTabs currentTab={tab} onTabChange={onTabChange} />
           )}
         </div>

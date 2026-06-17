@@ -2,9 +2,11 @@
 
 import { Suspense } from "react";
 import { useGetHistory } from "@/lib/api/hooks";
+import { isBackendUnavailableError, BACKEND_UNAVAILABLE_MESSAGE } from "@/lib/api/errors";
 import { Card, CardContent } from "@/components/ui/card";
 import { Clock } from "lucide-react";
 import { RunsList } from "@/components/runs/runs-list";
+import { RunsListSkeleton } from "@/components/runs/runs-list-skeleton";
 import { RunsFilters } from "@/components/runs/runs-filters";
 import { useRunsFilters } from "@/hooks/use-runs-filters";
 import { RunsStats } from "@/components/runs/runs-stats";
@@ -63,22 +65,26 @@ function RunsPageContent() {
       )}
 
       {isLoading && (
-        <div className="flex items-center justify-center h-48">
-          <Clock className="w-8 h-8 text-blue-500 animate-spin" />
-        </div>
+        <RunsListSkeleton />
       )}
 
       {error && (
         <Card className="border-red-900 bg-red-950/20 mb-4">
           <CardContent className="pt-6">
-            <p className="text-red-400">Failed to load history runs: {error.message}</p>
+            {isBackendUnavailableError(error) ? (
+              <p className="text-red-400">
+                {BACKEND_UNAVAILABLE_MESSAGE}
+              </p>
+            ) : (
+              <p className="text-red-400">Failed to load history runs: {error.message}</p>
+            )}
           </CardContent>
         </Card>
       )}
 
       {!isLoading && !error && filteredRuns && runs && (
         <div className="flex flex-col gap-4">
-          <RunsList runs={paginatedRuns} totalRuns={runs.length} />
+          <RunsList runs={paginatedRuns} totalRuns={runs.length} onClearFilters={handleClearFilters} />
           <RunsPagination 
             currentPage={currentPage}
             totalPages={totalPages}

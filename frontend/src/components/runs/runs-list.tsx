@@ -3,22 +3,18 @@ import { HistoryRun } from "@/lib/api/types";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { RunStatusBadge, RunStatusIcon } from "./run-status-badge";
+import { RunsEmptyState } from "./runs-empty-state";
 
 interface RunsListProps {
   runs: HistoryRun[];
   totalRuns?: number;
+  onClearFilters?: () => void;
 }
 
-export function RunsList({ runs, totalRuns }: RunsListProps) {
+export function RunsList({ runs, totalRuns, onClearFilters }: RunsListProps) {
   if (runs.length === 0) {
     const isFiltered = totalRuns !== undefined && totalRuns > 0;
-    return (
-      <div className="text-center py-12 text-zinc-500 border border-dashed border-zinc-800 rounded-lg">
-        {isFiltered 
-          ? "No runs match your current filters. Try clearing them." 
-          : "No history runs found. Go run your first analysis!"}
-      </div>
-    );
+    return <RunsEmptyState isFiltered={isFiltered} onClear={onClearFilters} />;
   }
 
   return (
