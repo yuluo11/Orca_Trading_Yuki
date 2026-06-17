@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AppHeader } from "@/components/layout/app-header";
+import { EnvCheck } from "@/components/dev/env-check";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-50">
         <QueryProvider>
           <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-6 w-full">
+            <EnvCheck />
             <AppHeader />
             {children}
           </div>
