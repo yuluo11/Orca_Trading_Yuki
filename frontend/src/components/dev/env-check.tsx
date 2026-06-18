@@ -1,11 +1,22 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { API_BASE_URL, USE_MOCK } from "@/lib/api/client";
 import { AlertTriangle, Server, Database } from "lucide-react";
 
 export function EnvCheck() {
-  const hostname = typeof window === "undefined" ? "localhost" : window.location.hostname;
-  const isRemoteHost = hostname !== "localhost" && hostname !== "127.0.0.1";
+  const [hostname, setHostname] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setHostname(window.location.hostname);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const isRemoteHost =
+    hostname !== null && hostname !== "localhost" && hostname !== "127.0.0.1";
   const isApiLocal =
     API_BASE_URL.includes("localhost") || API_BASE_URL.includes("127.0.0.1");
   const isMisconfigured = isRemoteHost && isApiLocal;
