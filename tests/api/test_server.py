@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.src.api import create_app
+from backend.src.api import server
 from backend.src.api.run_store import InMemoryRunStore
 from backend.src.api.sqlite_run_store import SQLiteRunStore
 
@@ -20,6 +21,50 @@ def test_health_endpoint_reports_ok() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_cors_origins_can_be_extended_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("ORCA_CORS_ORIGINS", "https://orca-trading-yuki-frontend.vercel.app")
+    client = TestClient(create_app(store=InMemoryRunStore()))
+
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://orca-trading-yuki-frontend.vercel.app",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.headers["access-control-allow-origin"]
+        == "https://orca-trading-yuki-frontend.vercel.app"
+    )
+
+
+def test_default_store_uses_sqlite_without_database_url(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("ORCA_DATABASE_URL", raising=False)
+    monkeypatch.setenv("ORCA_RUNS_DB_PATH", str(tmp_path / "runs.db"))
+
+    store = server._build_default_store()
+
+    assert isinstance(store, SQLiteRunStore)
+
+
+def test_default_store_uses_postgres_when_database_url_is_set(monkeypatch) -> None:
+    created: dict[str, str] = {}
+
+    class FakePostgresRunStore:
+        def __init__(self, database_url: str) -> None:
+            created["database_url"] = database_url
+
+    monkeypatch.setenv("ORCA_DATABASE_URL", "postgresql://example.test/orca")
+    monkeypatch.setattr(server, "PostgresRunStore", FakePostgresRunStore)
+
+    store = server._build_default_store()
+
+    assert isinstance(store, FakePostgresRunStore)
+    assert created["database_url"] == "postgresql://example.test/orca"
 
 
 def test_runs_endpoint_returns_frontend_history_contract() -> None:
